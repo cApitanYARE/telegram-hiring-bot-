@@ -1,11 +1,12 @@
 import os
 from aiogram import Router, F
 from aiogram.filters import CommandStart, CommandObject, Command
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 
 from bot.create_bot import bot
-from bot.db_handler.db_funk import get_user_data, insert_user, get_all_vacancies
+from bot.db_handler.db_funk import get_user_data, insert_user, get_all_vacancies, insert_data_review
 from bot.keyboards.kbs import main_kb
+from bot.keyboards.inline_kbs import sent_review_inline_kb
 
 from aiogram.utils.chat_action import ChatActionSender
 
@@ -13,6 +14,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from bot.utils.utils import process_txt, process_docx, process_pdf
+
+from aiogram.filters.callback_data import CallbackData
+
+import asyncio
 
 user_router = Router()
 
@@ -94,5 +99,79 @@ async def get_all_vacanciesfrom_db(message: Message, bot: bot):
         
         await message.answer(
             text=response_text, 
-            reply_markup=main_kb(message.from_user.id), 
+            reply_markup=sent_review_inline_kb(vacancy.get('id')),
         )
+
+class Form(StatesGroup): 
+    location = State()
+    work_mode = State()
+    experience = State()
+    skills = State()
+
+STEPS = {
+    Form.location: {
+        "db_key": "location", 
+        "next_text": "💼 What mode of operation are you interested in?(Remote, Office, Hybrid):",
+        "next_state": Form.work_mode
+    },
+    Form.work_mode: {
+        "db_key": "work_mode", 
+        "next_text": "⏳ Describe your work experience (for example: 2 years, Middle):",
+        "next_state": Form.experience
+    },
+    Form.experience: {
+        "db_key": "experience", 
+        "next_text": "🛠️ List your key skills separated by commas:",
+        "next_state": Form.skills
+    }
+}
+
+@user_router.callback_query(F.data.startswith("vacancy_respond:"))
+async def vacancy_respond(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+
+    vacancy_id = callback.data.split(":")[1]
+
+    await state.update_data(
+        id_vacancie=str(vacancy_id),
+        id_user=str(callback.from_user.id)
+    )
+
+    async with ChatActionSender.typing(bot=callback.bot, chat_id=callback.message.chat.id):
+        await asyncio.sleep(1)
+        await asyncio.sleep(1)
+        await callback.message.answer('Hello, please write your location (city, cointry): ')
+    await state.set_state(Form.location)
+
+@user_router.message(Form.location)
+@user_router.message(Form.work_mode)
+@user_router.message(Form.experience)
+async def process_profile_steps(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    
+    for state_obj, config in STEPS.items():
+        if state_obj.state == current_state:
+            # Зберігаємо відповідь
+            await state.update_data({config["db_key"]: message.text})
+            # Перемикаємо на наступний стан
+            await state.set_state(config["next_state"])
+            
+            # Задаємо наступне питання
+            async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
+                await asyncio.sleep(1)
+                await message.answer(config["next_text"])
+            return
+            
+@user_router.message(Form.skills)
+async def process_skills_and_finish(message: Message, state: FSMContext):
+    await state.update_data(skills=message.text)
+    
+    user_data = await state.get_data()
+    
+    await state.clear()
+    
+    try:
+        await insert_data_review(user_data)
+        await message.answer("🎉 Thank you! Your application has been successfully sent.")
+    except Exception as e:
+        await message.answer("❌ Something went wrong while saving your data.")

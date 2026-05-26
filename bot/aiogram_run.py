@@ -1,6 +1,6 @@
 import asyncio
 from bot.create_bot import bot, dp, admins
-from bot.db_handler.db_funk import create_table_users, create_table_vacancies, get_all_users
+from bot.db_handler.db_funk import create_table_users, create_table_vacancies, get_all_users, create_table_reviews
 
 from bot.hendlers.admin_panel import admin_router
 from bot.hendlers.user_router import user_router
@@ -18,6 +18,8 @@ async def set_commands():
 async def start_bot():
     await create_table_users()
     await create_table_vacancies()
+    await create_table_reviews()
+    
     await set_commands()
     count_users = await get_all_users(count=True)
 

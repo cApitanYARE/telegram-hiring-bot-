@@ -13,7 +13,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from asyncpg_lite import DatabaseManager
 
-import redis
+from redis.asyncio import Redis
 from aiogram.fsm.storage.redis import RedisStorage
 
 
@@ -23,7 +23,10 @@ load_dotenv()
 
 admins = [int(admin_id) for admin_id in config('ADMINS').split(',')]
 
-redis_fsm = redis.Redis(host='localhost', port=6379, decode_responses=True)
+REDIS_HOST = config('REDIS_HOST', default='localhost')
+REDIS_PORT = config('REDIS_PORT', default=6379, cast=int)
+
+redis_fsm = Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
 storage = RedisStorage(redis=redis_fsm)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -35,7 +38,7 @@ db_manager = DatabaseManager(db_url=config('DATABASE_URL'), deletion_password=co
 
 bot = Bot(token=config('BOT_TOKEN'), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
-dp = Dispatcher()
-#storage=storage
+dp = Dispatcher(storage=storage)
+
 
 

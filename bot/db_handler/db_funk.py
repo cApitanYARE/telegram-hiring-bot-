@@ -1,7 +1,7 @@
 import asyncio
 import asyncpg
 from decouple import config
-from sqlalchemy import BigInteger, Integer, String, DateTime, Boolean, Text, func
+from sqlalchemy import BigInteger, Integer, String, DateTime, Boolean, Text, DateTime, func
 from bot.create_bot import db_manager
 
 DATABASE_URL = config('DATABASE_URL')
@@ -23,11 +23,11 @@ async def create_table_users(table_name='users_reg'):
                                         'name': 'user_login',
                                         'type': String(255)  
                                     },
-                                    {
-                                        'name': 'date_reg',
-                                        'type': DateTime,    
-                                        'default': func.now() 
-                                    }
+                                    #{
+                                     #   'name': 'date_reg',
+                                    #    'type': 'TIMESTAMP',  
+                                    #    'server_default': 'NOW()'
+                                   # }
                                 ])
 
 try:
@@ -75,10 +75,10 @@ async def create_table_vacancies(table_name='vacancie'):
                                             'name' : 'is_active',
                                             'type': Boolean
                                         },
-                                        {
-                                            'name' : 'created_at',
-                                            'type': String(50)
-                                        },
+                                    #    {
+                                     #       'name' : 'created_at',
+                                    #        'type': func.now() 
+                                      #  },
                                         {
                                             'name': 'company_name',
                                             'type': String(255)
@@ -168,6 +168,69 @@ async def add_vacancies(data: dict,table_name='vacancie'):
         await conn.close()
 
 async def get_all_vacancies(table_name='vacancie'):
+
     async with db_manager as client:
         all_vacancies = await client.select_data(table_name=table_name)
         return all_vacancies
+
+async def create_table_reviews(table_name="reviews"):
+    async with db_manager as client:
+        await client.create_table(table_name=table_name,
+        columns=[
+            {
+                'name' : 'id_vacancie',
+                'type': String(255)
+            },
+            {
+                'name' : 'id_user',
+                'type': String(255)
+             },
+            {
+                'name' : 'experience',
+                'type': String(255)
+            },
+            {
+                'name' : 'skills',
+                'type': String(255)
+            },
+            {
+                'name' : 'data_sent',
+                'type': DateTime(),
+                'default': func.now()
+            }
+        ])
+
+async def insert_data_review(data: dict,table_name="reviews"):
+    clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
+    conn = await asyncpg.connect(clean_url)
+
+    skills = data.get('skills')
+    if isinstance(skills, list):
+        skills_str = ", ".join(str(s) for s in skills)
+    else:
+        skills_str = str(skills) if skills else None
+
+    try:
+        query = f"""
+        INSERT INTO {table_name} (
+            id_vacancie, id_user, location, work_mode, experience, skills
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        """
+        await conn.execute(
+            query, 
+            data.get('id_vacancie'),  
+            data.get('id_user'),      
+            data.get('location'),     
+            data.get('work_mode'),   
+            data.get('experience'),   
+            skills_str,               
+        )
+        print("--- DEBUG: vacancies successfully added to the database ! ---")
+        
+    except asyncpg.exceptions.UniqueViolationError:
+        print("--- DEBUG: This vacancy already exists. (UniqueViolationError) ---")
+    except Exception as e:
+        print(f"Error while writing a job: {e}")
+    finally:
+        await conn.close()
