@@ -4,7 +4,7 @@ from aiogram.filters import CommandStart, CommandObject, Command
 from aiogram.types import Message, CallbackQuery
 
 from bot.create_bot import bot
-from bot.db_handler.db_funk import get_user_data, insert_user, get_all_vacancies, insert_data_review, search_vacancie, get_data_user_reviews
+from bot.db_handler.db_funk import get_user_data, insert_user, get_all_vacancies, insert_data_review, search_vacancie, get_data_user_reviews, get_data_user_get_messages
 from bot.keyboards.kbs import main_kb
 from bot.keyboards.inline_kbs import sent_review_inline_kb, author_link_kb
 
@@ -265,8 +265,8 @@ async def process_search_message_to_user(message: Message, bot: bot,state):
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
         user_id = message.from_user.id
         messages_to_user = await get_data_user_get_messages(user_id)
-
-        if not user_review:
+        print(messages_to_user)
+        if not messages_to_user:
             await message.answer("Nobody have send you messages yet 😔")
             await state.clear()
             return
@@ -278,14 +278,13 @@ async def process_search_message_to_user(message: Message, bot: bot,state):
             skills_str = ", ".join(skills) if isinstance(skills, list) else (skills or 'Not specified')
 
             response_text = (
-                    f"📋 *Vacancy ID: {review.get('id_vacancie')}*\n\n"
-                    f"📋 *Status: {review.get('status')}*\n\n"
-                    f"🏢 *Company:* {review.get('company_name') or 'Not specified'}\n"
-                    f"💼 *Job Position:* {review.get('job_position') or 'Not specified'}\n"
-                    f"💰 *Salary:* {review.get('salary') or 'Not specified'} {review.get('currency') or ''}\n"
-                    f"🛠  *Main skills:*\n{skills_str}\n"
+                f"📋 *Vacancy ID: {review.get('id_vacancie')}*\n\n"
+                f"🏢 *Company:* {review.get('company_name') or 'Not specified'}\n"
+                f"💼 *Job Position:* {review.get('job_position') or 'Not specified'}\n"
+                f"🛠  *Main skills:*\n{skills_str}\n\n"
+                f"💬  *Answear*\n{review.get('text') or 'Not specified'}\n"
             )
             await message.answer(
-            text=response_text,
+                text=response_text
             )
         await state.clear()
