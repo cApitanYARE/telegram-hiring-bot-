@@ -16,7 +16,7 @@ def main_kb(user_telegram_id: int):
     keyboard = ReplyKeyboardMarkup(
         keyboard=kb_list,
         resize_keyboard=True, 
-        one_time_keyboard=True,
+        one_time_keyboard=False,
         input_field_placeholder="Use the menu..."
     )
     return keyboard
