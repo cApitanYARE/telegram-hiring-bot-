@@ -1,14 +1,55 @@
 import os
+import asyncio
 
 from aiogram import F, Router
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
+from aiogram.filters.callback_data import CallbackData
+
+from aiogram.fsm.context import FSMContext
+
 from aiogram.utils.chat_action import ChatActionSender
 from bot.create_bot import admins, bot
-from bot.db_handler.db_funk import get_all_users, add_vacancies, get_all_vacancies
+from bot.db_handler.db_funk import get_all_users, add_vacancies, get_all_vacancies, get_data_all_reviews, get_user_data, set_user_status_as_false,insert_data_user_get_messages
 from bot.keyboards.kbs import home_page_kb, main_kb
+from bot.keyboards.inline_kbs import sent_answear_on_review_inline_kb
+
 from bot.utils.utils import process_txt, process_docx, process_pdf
 
+from tkinter import Tk 
+from tkinter.filedialog import askopenfilename
+
+from aiogram.fsm.state import State, StatesGroup
+
 admin_router = Router()
+
+
+def get_file_path():
+    root = Tk()
+    root.withdraw()
+    root.wm_attributes('-topmost', 1)
+
+    file_path = askopenfilename(
+        title="Select file",
+        filetypes=[
+            ("PDF files", "*.pdf"),
+            ("Word files", "*.docx *.doc"),
+            ("Text files", "*.txt"),
+        ]
+    )
+    
+    root.destroy() 
+    return file_path
+
+@admin_router.message(F.text == "⚙️ Add a vacancy")
+async def select_file(message: Message):
+    await message.answer("Select file on tour PC...")
+    file_path = await asyncio.to_thread(get_file_path)
+        
+    if file_path:
+        await message.answer(f"You select file: {file_path}")
+    else:
+        await message.answer("You cancel selection")
+
 
 @admin_router.message((F.text.endswith('⚙️ Admin panel')) & (F.from_user.id.in_(admins)))
 async def get_profile(message: Message):
@@ -126,4 +167,112 @@ async def uploud_vacancies(message: Message, bot: bot):
         await add_vacancies(data)
         response_text = "Vacancies is added at DB"
     await message.answer(text=response_text, reply_markup=main_kb(message.from_user.id))
+
+@admin_router.message(F.text == "⚙️ Received Applications")
+async def get_received_applications(message: Message):
+    all_reviews = await get_data_all_reviews()
+
+    hr_id = message.from_user.id
+
+    if not all_reviews:
+        await message.answer("📭 There are no 'Received Applications' in the database yet.")
+        return
+
+    for review in all_reviews:
+        skills = review.get('skills')
+        skills_str = ", ".join(skills) if isinstance(skills, list) else (skills or 'Not specified')
+        
+        candidate_name = review.get('full_name') or 'Not specified'
+        user_login = review.get('user_login')
+        username_str = f" (@{user_login})" if user_login else ""
+        if review.get('status'):
+            status_str = "🟢 In work"
+        else:
+            status_str = "🔴 Closed"
+        response_text = (
+            #abiut Vacancy
+            f"📋 *Status: {status_str}*\n\n"
+            f"📋 *Vacancy ID: {review.get('id_vacancie')}*\n\n"
+            f"🏢 *Company:* {review.get('company_name') or 'Not specified'}\n"
+            f"💼 *Job Position:* {review.get('job_position') or 'Not specified'}\n\n"
+            #abiut user
+            f"👤 *Candidate:* {candidate_name}{username_str}\n"
+            f"⏳ *Experience:* {review.get('experience') or 'Not specified'}\n"
+            f"🛠 *Main skills (Skills):*\n{skills_str}\n"
+            f"📍 *Location:* {review.get('location') or 'Not specified'}\n"
+            f"🔄 *Work Mode:* {review.get('work_mode') or 'Not specified'}\n"
+        )
+
+        await message.answer(
+            text=response_text,
+            reply_markup=sent_answear_on_review_inline_kb(review.get('id_user'), review.get('id_vacancie'), hr_id)
+        )
+
+@admin_router.callback_query(F.data.startswith("vacancy_reject:"))
+async def vacancy_reject(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+
+    data_parts = callback.data.split(":")
+    user_id = int(data_parts[1])     
+    vacancy_id = int(data_parts[2])
+
+    user_info = await get_user_data(user_id)
+
+    if user_info and isinstance(user_info, dict):
+        candidate_name = user_info.get('full_name') or 'Not specified'
+        user_login = user_info.get('user_login')
+        username_str = f" (@{user_login})" if user_login else ""
+
+        await set_user_status_as_false(str(user_id),str(vacancy_id))
+    else:
+        candidate_name = f"ID: {user_id}"
+        username_str = ""
+
+    await callback.message.answer(
+        text=f"❌ The candidate *{candidate_name}*{username_str} is rejected on vacancy ID: {vacancy_id}.",
+    )
+
+class HRResponsrState(StatesGroup):
+    waiting_for_comment = State()
+
+@admin_router.callback_query(F.data.startswith("vacancy_respond_hr_to_user:"))
+async def vacancy_accept(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+
+    data_parts = callback.data.split(":")
+    user_id = int(data_parts[1])     
+    vacancy_id = int(data_parts[2])
+    hr_id = int(data_parts[3])
+
+    await state.update_data(
+        user_id=user_id,
+        vacancy_id=vacancy_id,
+        hr_id=hr_id
+    )
+
+    await state.set_state(HRResponsrState.waiting_for_comment)
+
+    await callback.message.answer("Enter your comment to the candidat:")
+
+
+@admin_router.message(HRResponsrState.waiting_for_comment)
+async def get_hr_comment(message: Message, state: FSMContext):
+    comment_text = message.text
+
+    user_data = await state.get_data()
+    user_id = user_data.get("user_id")
+    vacancy_id = user_data.get("vacancy_id")
+    hr_id = user_data.get("hr_id")
+
+    await insert_data_user_get_messages(
+        data={
+            "hr_id": hr_id,
+            "user_id": user_id,
+            "vacancy_id": vacancy_id,
+            "comment": comment_text  
+        }
+    )
+    await state.clear()
+
+    await message.answer("Your comment has been successfully saved and sent!")
 
