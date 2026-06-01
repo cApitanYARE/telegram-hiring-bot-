@@ -406,8 +406,8 @@ async def insert_data_user_get_messages(data: dict,table_name="messages_to_user"
         await conn.execute(
             query, 
             data['hr_id'],
-            data['user_id'],
             data['vacancy_id'],
+            data['user_id'],
             data['comment'],
         )
 
@@ -428,10 +428,10 @@ async def get_data_user_get_messages(data: int,table_name="messages_to_user"):
     try:
         query = f"""
         SELECT
+            m.id_hr,
             m.id_vacancie,
             m.id_user,
             m.text,
-            m.status,
             v.company_name,
             v.job_position,
             v.skills
@@ -439,7 +439,7 @@ async def get_data_user_get_messages(data: int,table_name="messages_to_user"):
         INNER JOIN vacancie v ON m.id_vacancie::integer = v.id  
         WHERE m.id_user = $1
         """
-        data_review = await conn.fetch(query, str(data))
+        data_review = await conn.fetch(query, int(data))
         return data_review
         
     except asyncpg.exceptions.UniqueViolationError:
@@ -449,3 +449,56 @@ async def get_data_user_get_messages(data: int,table_name="messages_to_user"):
     finally:
         await conn.close()
 
+async def create_table_talent_pool(table_name="talent_pool"):
+    async with db_manager as client:
+        await client.create_table(table_name=table_name,
+        columns=[
+            {
+                'name' : 'id_user',
+                'type': Integer
+            },
+            {
+                'name' : 'location',
+                'type': String(255)
+            },
+            {
+                'name' : 'skill_tags',
+                'type': String(255)
+            },
+            {
+                'name' : 'experience_years',
+                'type': String(255)
+            },
+            {
+                'name' : 'data_sent',
+                'type': DateTime(),
+                'default': func.now()
+            }
+        ])
+
+async def insert_user_to_talant_pool(user, location, skills, experience ,table_name="talent_pool"):
+    async def set_user_status_as_false(user, vacancy,table_name="reviews"):
+        clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
+        conn = await asyncpg.connect(clean_url)
+
+        try:
+            query = f"""
+            INSERT INTO {table_name} (id_user, location, skill_tags, experience_years)
+            VALUES ($1, $2, $3, $4)
+            """
+            await conn.execute(
+                query, 
+                user,
+                location,
+                skills,
+                experience,
+            )
+
+            return True
+            
+        except asyncpg.exceptions.UniqueViolationError:
+            print("--- DEBUG: This vacancy already exists. (UniqueViolationError) ---")
+        except Exception as e:
+            print(f"Error while writing a job: {e}")
+        finally:
+            await conn.close()
