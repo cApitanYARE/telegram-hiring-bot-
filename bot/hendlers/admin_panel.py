@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 
 from aiogram.utils.chat_action import ChatActionSender
 from bot.create_bot import admins, bot
-from bot.db_handler.db_funk import get_all_users, add_vacancies, get_all_vacancies, get_data_all_reviews, get_user_data, set_user_status_as_false,insert_data_user_get_messages
+from bot.db_handler.db_funk import get_all_users, add_vacancies, get_all_vacancies, get_data_all_reviews, get_user_data, set_user_status_as_false,insert_data_user_get_messages, insert_user_to_talant_pool
 from bot.keyboards.kbs import home_page_kb, main_kb
 from bot.keyboards.inline_kbs import sent_answear_on_review_inline_kb
 
@@ -205,7 +205,7 @@ async def get_received_applications(message: Message):
 
         await message.answer(
             text=response_text,
-            reply_markup=sent_answear_on_review_inline_kb(review.get('id_user'), review.get('id_vacancie'), hr_id)
+            reply_markup=sent_answear_on_review_inline_kb(review.get('id_user'), review.get('id_vacancie'), hr_id, review.get('experience'), review.get('location'), skills_str)
         )
 
 @admin_router.callback_query(F.data.startswith("vacancy_reject:"))
@@ -232,6 +232,36 @@ async def vacancy_reject(callback: CallbackQuery, state: FSMContext):
         text=f"❌ The candidate *{candidate_name}*{username_str} is rejected on vacancy ID: {vacancy_id}.",
     )
 
+@admin_router.callback_query(F.data.startswith("vacancy_talent_pool:"))
+async def candidate_move_to_talant_pool(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+
+    data_parts = callback.data.split(":")
+
+    user_id = int(data_parts[1])     
+    hr_id = int(data_parts[2])
+    experience = str(data_parts[3])
+    location = str(data_parts[4])
+    skills_str = str(data_parts[5])
+    vacancy_id = int(data_parts[6])
+
+    user_info = await get_user_data(user_id)
+
+    if user_info and isinstance(user_info, dict):
+        candidate_name = user_info.get('full_name') or 'Not specified'
+        user_login = user_info.get('user_login')
+        username_str = f" (@{user_login})" if user_login else ""
+
+        await insert_user_to_talant_pool(str(user_id),str(location),str(skills_str),str(experience))
+        await set_user_status_as_false(str(user_id),str(vacancy_id))
+    else:
+        candidate_name = f"ID: {user_id}"
+        username_str = ""
+
+    await callback.message.answer(
+        text=f"❌ The candidate *{candidate_name}*{username_str} is rejected on vacancy ID: {vacancy_id}. And added to talant pool",
+    )
+
 class HRResponsrState(StatesGroup):
     waiting_for_comment = State()
 
@@ -254,9 +284,8 @@ async def vacancy_accept(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.answer("Enter your comment to the candidat:")
 
-
 @admin_router.message(HRResponsrState.waiting_for_comment)
-async def get_hr_comment(message: Message, state: FSMContext):
+async def insert_hr_comment_to_candidate(message: Message, state: FSMContext):
     comment_text = message.text
 
     user_data = await state.get_data()
