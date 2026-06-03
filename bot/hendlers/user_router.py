@@ -23,6 +23,51 @@ user_router = Router()
 
 universe_text = ('To learn more, use the buttons below or select a command from the menu.')
 
+async def compare_data_review(user: dict, vacancy: dict):
+    
+    user_loc = str(user.get('location', '')).strip().lower()
+    vac_loc = str(vacancy.get('location', '')).strip().lower()
+    location_score = 1 if (user_loc == vac_loc or "remote" in vac_loc) else 0
+    location_res = f"{location_score} out of {len(vac_loc)}"
+
+    user_mode = str(user.get('work_mode', '')).strip().lower()
+    vac_mode = str(vacancy.get('work_mode', '')).strip().lower()
+    mode_score = 1 if (user_mode == vac_mode or vac_mode == "any") else 0
+    work_mode_res = f"{mode_score} out of {len(vac_mode)}"
+
+    def extract_years(text):
+        digits = re.findall(r'\d+', str(text))
+        return int(digits[0]) if digits else 0
+
+    user_exp = extract_years(user.get('experience', '0'))
+    vac_exp = extract_years(vacancy.get('experience', '0'))
+    
+    exp_score = vac_exp if user_exp >= vac_exp else user_exp
+    experience_res = f"{exp_score} out of {len(vac_exp)}"
+
+    def get_skills_set(skills_str):
+        if not skills_str:
+            return set()
+        return set(clean_skill.strip().lower() for clean_skill in re.split(r'[,;\s]+', str(skills_str)) if clean_skill)
+
+    user_skills = get_skills_set(user.get('skills', ''))
+    vac_skills = get_skills_set(vacancy.get('skills', ''))
+
+    matched_skills = user_skills.intersection(vac_skills)
+    
+    total_vac_skills = len(vac_skills) if len(vac_skills) > 0 else 1 
+    skills_res = f"{len(matched_skills)} out of {total_vac_skills}"
+
+    return {
+        'id_vacancie': user.get('id_vacancie'),
+        'id_user': user.get('id_user'),
+        'location': location_res,
+        'work_mode': work_mode_res,
+        'experience': experience_res,
+        'skills': skills_res,
+    }
+
+
 @user_router.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject):
     async with ChatActionSender.typing(bot=bot, chat_id=message.from_user.id):
@@ -152,12 +197,9 @@ async def process_profile_steps(message: Message, state: FSMContext):
     
     for state_obj, config in STEPS.items():
         if state_obj.state == current_state:
-            # Зберігаємо відповідь
             await state.update_data({config["db_key"]: message.text})
-            # Перемикаємо на наступний стан
             await state.set_state(config["next_state"])
             
-            # Задаємо наступне питання
             async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
                 await asyncio.sleep(1)
                 await message.answer(config["next_text"])
@@ -168,11 +210,14 @@ async def process_skills_and_finish(message: Message, state: FSMContext):
     await state.update_data(skills=message.text)
     
     user_data = await state.get_data()
-    
+    vacancy_data = await search_vacancie(str(user_data))
     await state.clear()
+
+    data = await compare_data_review(user_data,vacancy_data)
     
     try:
         await insert_data_review(user_data)
+        await insert_data_for_hr_about_review(vacancy_data)
         await message.answer("🎉 Thank you! Your application has been successfully sent.")
     except Exception as e:
         await message.answer("❌ Something went wrong while saving your data.")
@@ -260,7 +305,7 @@ async def process_search_user_reviews(message: Message, bot: bot,state):
             )
         await state.clear()
 
-@user_router.message(F.text == "Incoming messages")
+@user_router.message(F.text == "💬 Incoming messages")
 async def process_search_message_to_user(message: Message, bot: bot,state):
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
         user_id = message.from_user.id

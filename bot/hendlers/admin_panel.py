@@ -9,7 +9,8 @@ from aiogram.fsm.context import FSMContext
 
 from aiogram.utils.chat_action import ChatActionSender
 from bot.create_bot import admins, bot
-from bot.db_handler.db_funk import get_all_users, add_vacancies, get_all_vacancies, get_data_all_reviews, get_user_data, set_user_status_as_false,insert_data_user_get_messages, insert_user_to_talant_pool
+from bot.db_handler.db_funk import get_all_users, add_vacancies, get_all_vacancies, get_data_all_reviews, get_user_data, set_user_status_as_false,insert_data_user_get_messages 
+#insert_user_to_talant_pool
 from bot.keyboards.kbs import home_page_kb, main_kb
 from bot.keyboards.inline_kbs import sent_answear_on_review_inline_kb
 
@@ -19,9 +20,9 @@ from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 
 admin_router = Router()
-
 
 def get_file_path():
     root = Tk()
@@ -40,49 +41,33 @@ def get_file_path():
     root.destroy() 
     return file_path
 
+
+class VacancyStates(StatesGroup):
+    wait_for_file = State()
+
 @admin_router.message(F.text == "⚙️ Add a vacancy")
-async def select_file(message: Message):
+async def select_file(message: Message, state: FSMContext):
     await message.answer("Select file on tour PC...")
-    file_path = await asyncio.to_thread(get_file_path)
-        
-    if file_path:
-        await message.answer(f"You select file: {file_path}")
-    else:
-        await message.answer("You cancel selection")
 
+    #file_path = await asyncio.to_thread(get_file_path)
+    await state.set_state(VacancyStates.wait_for_file)
 
-@admin_router.message((F.text.endswith('⚙️ Admin panel')) & (F.from_user.id.in_(admins)))
-async def get_profile(message: Message):
-    async with ChatActionSender.typing(bot=bot, chat_id=message.from_user.id):
-        all_users_data = await get_all_users()
-
-        admin_text = (
-            f'In data base <b>{len(all_users_data)}</b> people. Here is a brief information about each one:\n\n'
-        )
-
-        for user in all_users_data:
-            admin_text += (
-                f'Telegram ID: {user.get("user_id")}\n'
-                f'Full name: {user.get("full_name")}\n'
-            )
-
-            if user.get("user_login") is not None:
-                admin_text += f'Login: {user.get("user_login")}\n'
-
-            admin_text += (
-                 f'📅 Feedback sent: {user.get("date_reg")}\n'
-                 f'\n〰️〰️〰️〰️〰️〰️〰️〰️〰️\n\n'
-            )
-        
-    await message.answer(admin_text, reply_markup=home_page_kb(message.from_user.id))
+    #if file_path:
+    #    await message.answer(f"You select file: {file_path}")
+    #else:
+    #    await message.answer("You cancel selection")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-@admin_router.message(F.document)
-async def uploud_vacancies(message: Message, bot: bot):
+@admin_router.message(VacancyStates.wait_for_file, F.document)
+async def uploud_vacancies(message: Message, bot: bot, state: FSMContext):
     document = message.document
     file_id = document.file_id
     file_name = document.file_name
+
+    if not (file_name.endswith('.txt') or file_name.endswith('.docx') or file_name.endswith('.pdf')):
+        await message.answer("❌ Непідтримуваний формат файлу. Надішліть .txt, .docx або .pdf")
+        return
 
     file_info = await bot.get_file(file_id)
     file_path = file_info.file_path
@@ -165,8 +150,37 @@ async def uploud_vacancies(message: Message, bot: bot):
         nice_to_have_str = ", ".join(data["nice_to_have"]) if data["nice_to_have"] else "Not specified"
 
         await add_vacancies(data)
+        await state.clear()
         response_text = "Vacancies is added at DB"
+
     await message.answer(text=response_text, reply_markup=main_kb(message.from_user.id))
+
+
+@admin_router.message((F.text.endswith('⚙️ Admin panel')) & (F.from_user.id.in_(admins)))
+async def get_profile(message: Message):
+    async with ChatActionSender.typing(bot=bot, chat_id=message.from_user.id):
+        all_users_data = await get_all_users()
+
+        admin_text = (
+            f'In data base <b>{len(all_users_data)}</b> people. Here is a brief information about each one:\n\n'
+        )
+
+        for user in all_users_data:
+            admin_text += (
+                f'Telegram ID: {user.get("user_id")}\n'
+                f'Full name: {user.get("full_name")}\n'
+            )
+
+            if user.get("user_login") is not None:
+                admin_text += f'Login: {user.get("user_login")}\n'
+
+            admin_text += (
+                 f'📅 Feedback sent: {user.get("date_reg")}\n'
+                 f'\n〰️〰️〰️〰️〰️〰️〰️〰️〰️\n\n'
+            )
+        
+    await message.answer(admin_text, reply_markup=home_page_kb(message.from_user.id))
+
 
 @admin_router.message(F.text == "⚙️ Received Applications")
 async def get_received_applications(message: Message):
@@ -185,6 +199,9 @@ async def get_received_applications(message: Message):
         candidate_name = review.get('full_name') or 'Not specified'
         user_login = review.get('user_login')
         username_str = f" (@{user_login})" if user_login else ""
+
+        rates_review = select_data_for_hr_about_review(review.get('id_vacancie'),review.get('id_user'))
+
         if review.get('status'):
             status_str = "🟢 In work"
         else:
@@ -200,7 +217,13 @@ async def get_received_applications(message: Message):
             f"⏳ *Experience:* {review.get('experience') or 'Not specified'}\n"
             f"🛠 *Main skills (Skills):*\n{skills_str}\n"
             f"📍 *Location:* {review.get('location') or 'Not specified'}\n"
-            f"🔄 *Work Mode:* {review.get('work_mode') or 'Not specified'}\n"
+            f"🔄 *Work Mode:* {review.get('work_mode') or 'Not specified'}\n\n"
+
+            f"Rate review.\n\n"
+            f"⏳ *Experience:* {rates_review.get('experience') or 'Not specified'}\n"
+            f"🛠 *Main skills:*\n{rates_review.get('skills') or 'Not specified'}\n"
+            f"📍 *Location:* {rates_review.get('location') or 'Not specified'}\n"
+            f"🔄 *Work Mode:* {rates_review.get('work_mode') or 'Not specified'}\n\n"
         )
 
         await message.answer(
@@ -252,7 +275,7 @@ async def candidate_move_to_talant_pool(callback: CallbackQuery, state: FSMConte
         user_login = user_info.get('user_login')
         username_str = f" (@{user_login})" if user_login else ""
 
-        await insert_user_to_talant_pool(str(user_id),str(location),str(skills_str),str(experience))
+        #await insert_user_to_talant_pool(str(user_id),str(location),str(skills_str),str(experience))
         await set_user_status_as_false(str(user_id),str(vacancy_id))
     else:
         candidate_name = f"ID: {user_id}"

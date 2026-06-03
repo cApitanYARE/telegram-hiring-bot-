@@ -285,6 +285,97 @@ async def insert_data_review(data: dict,table_name="reviews"):
     finally:
         await conn.close()
 
+async def create_table_for_hr_about_review(table_name="for_hr_about_review"):
+    async with db_manager as client:
+        await client.create_table(table_name=table_name,
+        columns=[
+            {
+                'name' : 'id_vacancie',
+                'type': String(255),
+            },
+            {
+                'name' : 'id_user',
+                'type': String(255)
+            },
+            {
+                'name' : 'location',
+                'type': String(255)
+            },
+            {
+                'name' : 'work_mode',
+                'type': String(255)
+            },
+            {
+                'name' : 'experience',
+                'type': String(255)
+            },
+            {
+                'name' : 'skills',
+                'type': String(255)
+            },
+        ])
+
+async def insert_data_for_hr_about_review(data: dict,table_name="for_hr_about_review"):
+    clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
+    conn = await asyncpg.connect(clean_url)
+
+    skills = data.get('skills')
+    if isinstance(skills, list):
+        skills_str = ", ".join(str(s) for s in skills)
+    else:
+        skills_str = str(skills) if skills else None
+
+    try:
+        query = f"""
+        INSERT INTO {table_name} (
+            id_vacancie, id_user, location, work_mode, experience, skills
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        """
+        await conn.execute(
+            query, 
+            data.get('id_vacancie'),  
+            data.get('id_user'),   
+            data.get('location'),     
+            data.get('work_mode'),   
+            data.get('experience'),   
+            skills_str,               
+        )
+        print("--- DEBUG: vacancies successfully added to the database ! ---")
+        
+    except asyncpg.exceptions.UniqueViolationError:
+        print("--- DEBUG: This vacancy already exists. (UniqueViolationError) ---")
+    except Exception as e:
+        print(f"Error while writing a job: {e}")
+    finally:
+        await conn.close()
+
+async def select_data_for_hr_about_review(data: dict,table_name="for_hr_about_review"):
+    clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
+    conn = await asyncpg.connect(clean_url)
+
+    try:
+        query = f"""
+        SELECT
+            id_vacancie,
+            id_user,
+            location,
+            work_mode,
+            experience,
+            skills
+        FROM {table_name}
+        WHERE id_user = $1 AND id_vacancie = $2
+        """
+        data_review = await conn.execute(query, int(id_vacancie),int(id_user))
+        return data_review
+
+    except asyncpg.exceptions.UniqueViolationError:
+        print("--- DEBUG: This vacancy already exists. (UniqueViolationError) ---")
+    except Exception as e:
+        print(f"Error while writing a job: {e}")
+    finally:
+        await conn.close()
+
 async def get_data_user_reviews(data: int,table_name="reviews"):
     clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
     conn = await asyncpg.connect(clean_url)
@@ -476,29 +567,28 @@ async def create_table_talent_pool(table_name="talent_pool"):
             }
         ])
 
-async def insert_user_to_talant_pool(user, location, skills, experience ,table_name="talent_pool"):
-    async def set_user_status_as_false(user, vacancy,table_name="reviews"):
-        clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
-        conn = await asyncpg.connect(clean_url)
+async def set_user_status_as_false(user, vacancy,table_name="reviews"):
+    clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
+    conn = await asyncpg.connect(clean_url)
 
-        try:
-            query = f"""
-            INSERT INTO {table_name} (id_user, location, skill_tags, experience_years)
-            VALUES ($1, $2, $3, $4)
-            """
-            await conn.execute(
-                query, 
-                user,
-                location,
-                skills,
-                experience,
-            )
+    try:
+        query = f"""
+        INSERT INTO {table_name} (id_user, location, skill_tags, experience_years)
+        VALUES ($1, $2, $3, $4)
+        """
+        await conn.execute(
+            query, 
+            user,
+            location,
+            skills,
+            experience,
+        )
 
-            return True
-            
-        except asyncpg.exceptions.UniqueViolationError:
-            print("--- DEBUG: This vacancy already exists. (UniqueViolationError) ---")
-        except Exception as e:
-            print(f"Error while writing a job: {e}")
-        finally:
-            await conn.close()
+        return True
+        
+    except asyncpg.exceptions.UniqueViolationError:
+        print("--- DEBUG: This vacancy already exists. (UniqueViolationError) ---")
+    except Exception as e:
+        print(f"Error while writing a job: {e}")
+    finally:
+        await conn.close()
