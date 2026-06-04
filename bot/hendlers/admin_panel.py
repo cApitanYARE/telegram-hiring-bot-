@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 
 from aiogram.utils.chat_action import ChatActionSender
 from bot.create_bot import admins, bot
-from bot.db_handler.db_funk import get_all_users, add_vacancies, get_all_vacancies, get_data_all_reviews, get_user_data, set_user_status_as_false,insert_data_user_get_messages 
+from bot.db_handler.db_funk import get_all_users, add_vacancies, get_all_vacancies, get_data_all_reviews, get_user_data, set_user_status_as_false,insert_data_user_get_messages, select_data_for_hr_about_review
 #insert_user_to_talant_pool
 from bot.keyboards.kbs import home_page_kb, main_kb
 from bot.keyboards.inline_kbs import sent_answear_on_review_inline_kb
@@ -200,7 +200,10 @@ async def get_received_applications(message: Message):
         user_login = review.get('user_login')
         username_str = f" (@{user_login})" if user_login else ""
 
-        rates_review = select_data_for_hr_about_review(review.get('id_vacancie'),review.get('id_user'))
+        rates_review = await select_data_for_hr_about_review(review.get('id_vacancie'),review.get('id_user'))
+
+        if not rates_review:
+            return await message.answer("❌ Дані про порівняння цього відгуку не знайдені в базі.")
 
         if review.get('status'):
             status_str = "🟢 In work"
@@ -228,7 +231,7 @@ async def get_received_applications(message: Message):
 
         await message.answer(
             text=response_text,
-            reply_markup=sent_answear_on_review_inline_kb(review.get('id_user'), review.get('id_vacancie'), hr_id, review.get('experience'), review.get('location'), skills_str)
+            reply_markup=sent_answear_on_review_inline_kb(review.get('id_user'), review.get('id_vacancie'), hr_id)
         )
 
 @admin_router.callback_query(F.data.startswith("vacancy_reject:"))

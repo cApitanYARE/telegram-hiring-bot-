@@ -86,7 +86,7 @@ async def create_table_vacancies(table_name='vacancie'):
                                             'name': 'id',
                                             'type': Integer,              
                                             'primary_key': True,     
-                                            'autoincrement': True 
+                                            'autoincrement': True
                                         },
                                         {
                                             'name' : 'is_active',
@@ -193,9 +193,8 @@ async def get_all_vacancies(table_name='vacancie'):
         all_vacancies = await client.select_data(table_name=table_name)
         return all_vacancies
 
-async def search_vacancie(data: str,table_name="vacancie"):
-    data = str(data).strip()
-
+async def search_vacancie(data, table_name="vacancie"):
+    
     if data.isdigit():
         query = text(f"SELECT * FROM {table_name} WHERE id = :search_value")
         value = int(data)
@@ -206,8 +205,7 @@ async def search_vacancie(data: str,table_name="vacancie"):
     async with db_manager.session() as session:
         result = await session.execute(query, {"search_value": value})
         vacancies = result.mappings().all()
-        
-    return vacancies
+        return [dict(v) for v in vacancies]
 
 async def create_table_reviews(table_name="reviews"):
     async with db_manager as client:
@@ -350,7 +348,7 @@ async def insert_data_for_hr_about_review(data: dict,table_name="for_hr_about_re
     finally:
         await conn.close()
 
-async def select_data_for_hr_about_review(data: dict,table_name="for_hr_about_review"):
+async def select_data_for_hr_about_review(id_vacancie, id_user,table_name="for_hr_about_review"):
     clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
     conn = await asyncpg.connect(clean_url)
 
@@ -366,8 +364,12 @@ async def select_data_for_hr_about_review(data: dict,table_name="for_hr_about_re
         FROM {table_name}
         WHERE id_user = $1 AND id_vacancie = $2
         """
-        data_review = await conn.execute(query, int(id_vacancie),int(id_user))
-        return data_review
+        data_review = await conn.fetchrow(query, str(id_user),str(id_vacancie))
+
+        if data_review:
+            return dict(data_review)
+        return None
+
 
     except asyncpg.exceptions.UniqueViolationError:
         print("--- DEBUG: This vacancy already exists. (UniqueViolationError) ---")
