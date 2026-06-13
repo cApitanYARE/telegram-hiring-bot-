@@ -29,10 +29,10 @@ class CandidateState(MessagesState):
     asked_skills: List[str] = []
 
 class ScreeningResponse(BaseModel):
-    candidate_profile: CandidateProfile = Field(description="Оновлений профіль кандидата.")
-    next_question: str = Field(description="ОДНЕ наступне питання про ПОРОЖНЄ поле.")
-    is_completed: bool = Field(description="Встанови в true, якщо ВСІ обов'язкові поля та nice-to-have опитано.")
+    candidate_profile: CandidateProfile = Field(description="Updated candidate profile.")
+    next_question: str = Field(description="ONE more question about the EMPTY field.")
+    is_completed: bool = Field(description="Set this to true if ALL required and optional fields have been filled out.")
     just_asked_skill: Optional[str] = Field(
         None, 
-        description="Яку конкретно навичку з nice-to-have ти щойно перевірив у цьому кроці? (Наприклад: 'TypeScript', 'TailwindCSS/Bootstrap' або 'Figma'). Якщо питання стосувалося локації чи досвіду, залиш None."
+        description="Which specific “nice-to-have” skill did you just check in this step? (For example: “TypeScript,” “TailwindCSS/Bootstrap,” or ‘Figma’). If the question was about location or experience, leave it as “None.”"
     )
