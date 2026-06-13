@@ -21,88 +21,13 @@ import asyncio
 
 import re
 
+
+from bot.ai.candidate_schemas import CandidateProfile
+from bot.ai.candidate_graph import candidate_bot_app
+from langchain_core.messages import messages_from_dict, messages_to_dict, HumanMessage, BaseMessage
 user_router = Router()
 
 universe_text = ('To learn more, use the buttons below or select a command from the menu.')
-
-async def compare_data_review(user: dict, vacancy_input):
-    if isinstance(vacancy_input, list):
-        if not vacancy_input:
-            print("--- ERROR: Vacancy list is empty! ---")
-            return None
-        vacancy = vacancy_input[0]
-    else:
-        vacancy = vacancy_input
-
-    user_loc = str(user['location']).strip().lower()
-    vac_loc = str(vacancy['location']).strip().lower()
-    
-    vac_loc_words = re.findall(r'\b\w+\b', vac_loc)
-    user_loc_words = re.findall(r'\b\w+\b', user_loc)
-    
-    if "remote" in vac_loc_words:
-        location_score = len(vac_loc_words) # автоматично повний бал за дистанційку
-    else:
-        location_score = sum(1 for word in user_loc_words if word in vac_loc_words)
-        
-    loc_words_count = len(vac_loc_words) if vac_loc_words else 1
-    location_res = f"{location_score} out of {loc_words_count}"
-
-    user_mode = str(user['work_mode']).strip().lower()
-    vac_mode = str(vacancy['work_mode']).strip().lower()
-    
-    vac_mode_words = re.findall(r'\b\w+\b', vac_mode)
-    user_mode_words = re.findall(r'\b\w+\b', user_mode)
-    
-    if vac_mode == "any":
-        mode_score = len(vac_mode_words)
-    else:
-        mode_score = sum(1 for word in user_mode_words if word in vac_mode_words)
-        
-    mode_words_count = len(vac_mode_words) if vac_mode_words else 1
-    work_mode_res = f"{mode_score} out of {mode_words_count}"
-
-    def extract_years(text):
-        digits = re.findall(r'\d+[.,]?\d*', str(text))
-        if digits:
-            clean_number = digits[0].replace(',', '.')
-            try:
-                return float(clean_number)
-            except ValueError:
-                return 0.0
-        return 0.0
-
-    user_exp = extract_years(user['experience'])
-    vac_exp = extract_years(vacancy['experience'])
-    
-    exp_score = vac_exp if user_exp >= vac_exp else user_exp
-
-    def format_num(val):
-        return int(val) if val.is_integer() else val
-
-    experience_res = f"{format_num(exp_score)} out of {format_num(vac_exp)}"
-
-    def get_skills_set(skills_str):
-        if not skills_str:
-            return set()
-        skills_list = re.split(r'[,;]+', str(skills_str))
-        return set(skill.strip().lower() for skill in skills_list if skill.strip())
-
-    user_skills = get_skills_set(user['skills'])
-    vac_skills = get_skills_set(vacancy['skills'])
-
-    matched_skills = user_skills.intersection(vac_skills)
-    total_vac_skills = len(vac_skills) if vac_skills else 1 
-    skills_res = f"{len(matched_skills)} out of {total_vac_skills}"
-
-    return {
-        'id_vacancie': user['id_vacancie'],
-        'id_user': user['id_user'],
-        'location': str(location_res),
-        'work_mode': str(work_mode_res),
-        'experience': str(experience_res),
-        'skills': str(skills_res)
-    }
 
 @user_router.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject):
@@ -126,7 +51,7 @@ async def cmd_start(message: Message, command: CommandObject):
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @user_router.message(F.document)
-async def hendle_document(message: Message, bot: bot):
+async def hendle_document(message: Message, bot: bot, state: FSMContext):
     document = message.document
     file_id = document.file_id
     file_name = document.file_name
@@ -140,6 +65,8 @@ async def hendle_document(message: Message, bot: bot):
 
     await bot.download_file(file_path, destination)
 
+    current_state_str = await state.get_state()
+
     if file_name.endswith('.txt'):
         await process_txt(destination, message)
     elif file_name.endswith('.docx'):
@@ -147,8 +74,25 @@ async def hendle_document(message: Message, bot: bot):
     elif file_name.endswith('.pdf'):
         await process_pdf(destination, message)
 
-    response_text = f' File, {file_id}being processed. {universe_text}'
+    if current_state_str == Form.screening_active.state:
+        user_data = await state.get_data()
+        graph_state = user_data.get("graph_state")
 
+        if graph_state:
+            graph_state["chat_history"].append({"role": "system", "content": f"USER_CV_TEXT: {raw_cv_text}"})
+            
+            graph_state["current_node"] = "EXTRACT_CV"
+            
+            from bot.ai.candidate_graph import candidate_bot_app
+            updated_state = await candidate_bot_app.ainvoke(graph_state)
+            
+            ai_msg = updated_state["chat_history"][-1]["content"]
+            await message.answer(ai_msg)
+            
+            await state.update_data(graph_state=updated_state)
+            return 
+
+    response_text = f'📄 File {file_name} has been processed. {universe_text}'
     await message.answer(text=response_text, reply_markup=main_kb(message.from_user.id))
 
 @user_router.message(F.text == "📄 All vacancies")
@@ -185,89 +129,76 @@ async def get_all_vacanciesfrom_db(message: Message, bot: bot):
         )
 
 class Form(StatesGroup): 
-    location = State()
-    work_mode = State()
-    experience = State()
-    skills = State()
-
-STEPS = {
-    Form.location: {
-        "db_key": "location", 
-        "next_text": "💼 What mode of operation are you interested in?(Remote, Office, Hybrid):",
-        "next_state": Form.work_mode
-    },
-    Form.work_mode: {
-        "db_key": "work_mode", 
-        "next_text": "⏳ Describe your work experience (for example: 2 years, Middle):",
-        "next_state": Form.experience
-    },
-    Form.experience: {
-        "db_key": "experience", 
-        "next_text": "🛠️ List your key skills separated by commas:",
-        "next_state": Form.skills
-    }
-}
+    screening_active = State()
 
 @user_router.callback_query(F.data.startswith("vacancy_respond:"))
 async def vacancy_respond(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-
     vacancy_id = callback.data.split(":")[1]
-
-    await state.update_data(
-        id_vacancie=str(vacancy_id),
-        id_user=str(callback.from_user.id)
-    )
-    
-    async with ChatActionSender.typing(bot=callback.bot, chat_id=callback.message.chat.id):
-        await asyncio.sleep(1)
-        await asyncio.sleep(1)
-        await callback.message.answer('Hello, please write your location (city, cointry): ')
-    await state.set_state(Form.location)
-
-@user_router.message(Form.location)
-@user_router.message(Form.work_mode)
-@user_router.message(Form.experience)
-async def process_profile_steps(message: Message, state: FSMContext):
-    current_state = await state.get_state()
-    
-    for state_obj, config in STEPS.items():
-        if state_obj.state == current_state:
-            await state.update_data({config["db_key"]: message.text})
-            await state.set_state(config["next_state"])
-            
-            async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-                await asyncio.sleep(1)
-                await message.answer(config["next_text"])
-            return
-            
-@user_router.message(Form.skills)
-async def process_skills_and_finish(message: Message, state: FSMContext):
-    await state.update_data(skills=message.text)
-    
-    user_data = await state.get_data()
-
-    vacancy_id = user_data.get('id_vacancie')
-    
-    if not vacancy_id:
-        return await message.answer("No job ID found for comparison.")
-        
     vacancy_data = await search_vacancie(vacancy_id)
+    vacancy_data = dict(vacancy_data[0]) if vacancy_data else None
 
     if not vacancy_data:
-        return await message.answer("❌ Vacancy not found in database.")
-   
+        await callback.message.answer("На жаль, вакансію не знайдено.")
+        return
 
-    compare_data = await compare_data_review(user_data, vacancy_data)
+    vacancy_data.pop("created_at", None)
     
-    try:
-        await insert_data_review(user_data)
-        await insert_data_for_hr_about_review(compare_data)
-        await message.answer("🎉 Thank you! Your application has been successfully sent.")
+    first_question = "Привіт! Починаємо інтерв'ю. Яке ваше розташування?"
+    initial_state = {
+        "messages": [],
+        "vacancy_data": vacancy_data,
+        "candidate": CandidateProfile().model_dump(),
+        "next_question": first_question,
+        "is_completed": False,
+    }
 
+    await state.update_data(agent_state=initial_state)
+    await state.set_state(Form.screening_active)
+    
+    await callback.message.answer(initial_state["next_question"])
+   
+@user_router.message(Form.screening_active, F.text)
+async def handle_ai_interview_chat(message: Message, state: FSMContext):
+    data = await state.get_data()
+    agent_state: dict = data.get("agent_state")
+ 
+    if not agent_state:
+        await message.answer("Сесію інтерв'ю не знайдено. Будь ласка, відгукніться на вакансію знову.")
         await state.clear()
-    except Exception as e:
-        await message.answer(f"❌ Something went wrong while saving your data. {e}")
+        return
+
+    raw_messages = agent_state.get("messages", [])
+    if raw_messages:
+        agent_state["messages"] = messages_from_dict(raw_messages)
+    else:
+        agent_state["messages"] = []
+
+    input_state = {
+        **agent_state,
+        "messages": agent_state["messages"] + [HumanMessage(content=message.text)]
+    }
+ 
+    updated_state: dict = await candidate_bot_app.ainvoke(input_state)
+ 
+    cleaned_messages = []
+    for msg in updated_state.get("messages", []):
+        if isinstance(msg, BaseMessage):
+            cleaned_messages.extend(messages_to_dict([msg]))
+        elif isinstance(msg, dict):
+            cleaned_messages.append(msg)
+
+    updated_state["messages"] = cleaned_messages
+ 
+    await state.update_data(agent_state=updated_state)
+ 
+    if updated_state.get("is_completed"):
+        await message.answer("Дякуємо! Ваш профіль успішно заповнено. Ми зв'яжемося з вами найближчим часом!")
+        print(updated_state.get("candidate"))
+        await state.clear()
+    else:
+        await message.answer(updated_state["next_question"])
+ 
 
 class SearchVacancyStates(StatesGroup):
     wait_for_query = State()
