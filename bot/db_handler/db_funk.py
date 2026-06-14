@@ -304,11 +304,15 @@ async def create_table_for_hr_about_review(table_name="for_hr_about_review"):
                 'type': String(255)
             },
             {
+                'name' : 'skills',
+                'type': String(255)
+            },
+            {
                 'name' : 'experience',
                 'type': String(255)
             },
             {
-                'name' : 'skills',
+                'name' : 'git_hub_url',
                 'type': String(255)
             },
         ])
@@ -326,18 +330,19 @@ async def insert_data_for_hr_about_review(data: dict,table_name="for_hr_about_re
     try:
         query = f"""
         INSERT INTO {table_name} (
-            id_vacancie, id_user, location, work_mode, experience, skills
+            id_vacancie, id_user, location, work_mode, skills, experience, git_hub_url
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         """
         await conn.execute(
             query, 
-            data.get('id_vacancie'),  
+            data.get('id_vacancy'),  
             data.get('id_user'),   
             data.get('location'),     
-            data.get('work_mode'),   
-            data.get('experience'),   
-            skills_str,               
+            data.get('work_mode'),
+            skills_str,   
+            data.get('experience'),
+            data.get('git_hub'),                    
         )
         print("--- DEBUG: vacancies successfully added to the database ! ---")
         
