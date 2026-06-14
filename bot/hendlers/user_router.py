@@ -19,6 +19,9 @@ from aiogram.filters.callback_data import CallbackData
 
 import asyncio
 
+import psycopg2
+from psycopg2 import errors
+
 import re
 
 
@@ -144,7 +147,7 @@ async def vacancy_respond(callback: CallbackQuery, state: FSMContext):
 
     vacancy_data.pop("created_at", None)
     
-    first_question = "Привіт! Починаємо інтерв'ю. Яке ваше розташування?"
+    first_question = "Hello! Let's start the interview. What's your location (city, town, or country)?"
     initial_state = {
         "messages": [],
         "vacancy_data": vacancy_data,
@@ -191,10 +194,22 @@ async def handle_ai_interview_chat(message: Message, state: FSMContext):
     updated_state["messages"] = cleaned_messages
  
     await state.update_data(agent_state=updated_state)
- 
+
+    vacancy_data = agent_state.get("vacancy_data", {})
+    vacancy_id = vacancy_data.get("id")
+    id_user = message.from_user.id
+
+    result_interview = updated_state.get("candidate")
+    result_interview["id_vacancy"] = str(vacancy_id)
+    result_interview["id_user"] = str(id_user)
+    result_interview["experience"] = str(result_interview["experience"])
     if updated_state.get("is_completed"):
         await message.answer("Дякуємо! Ваш профіль успішно заповнено. Ми зв'яжемося з вами найближчим часом!")
         print(updated_state.get("candidate"))
+        try:
+            await insert_data_for_hr_about_review(updated_state.get("candidate"))#table_name="for_hr_about_review"
+        except psycopg2.Error as e:
+            print(f"DB error {e}")
         await state.clear()
     else:
         await message.answer(updated_state["next_question"])
