@@ -4,7 +4,7 @@ from aiogram.filters import CommandStart, CommandObject, Command
 from aiogram.types import Message, CallbackQuery
 
 from bot.create_bot import bot
-from bot.db_handler.db_funk import get_user_data, insert_user, get_all_vacancies, insert_data_review, search_vacancie, get_data_user_reviews, get_data_user_get_messages, insert_data_for_hr_about_review
+from bot.db_handler.db_funk import select_user_data, insert_user, select_all_vacancies, insert_data_review, select_search_vacancie, select_data_user_reviews, select_data_user_get_messages, insert_data_for_hr_about_review
 from bot.keyboards.kbs import main_kb
 from bot.keyboards.inline_kbs import sent_review_inline_kb, author_link_kb
 
@@ -35,7 +35,7 @@ universe_text = ('To learn more, use the buttons below or select a command from 
 @user_router.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject):
     async with ChatActionSender.typing(bot=bot, chat_id=message.from_user.id):
-        user_info = await get_user_data(user_id=message.from_user.id)
+        user_info = await select_user_data(user_id=message.from_user.id)
         response_text = ""
         
         if user_info:
@@ -99,8 +99,8 @@ async def hendle_document(message: Message, bot: bot, state: FSMContext):
     await message.answer(text=response_text, reply_markup=main_kb(message.from_user.id))
 
 @user_router.message(F.text == "📄 All vacancies")
-async def get_all_vacanciesfrom_db(message: Message, bot: bot):
-    vacancies = await get_all_vacancies()
+async def select_all_vacancie(message: Message, bot: bot):
+    vacancies = await select_all_vacancies()
     
     if not vacancies:
         await message.answer("📭 There are no vacancies in the database yet.")
@@ -204,7 +204,7 @@ async def handle_ai_interview_chat(message: Message, state: FSMContext):
     result_interview["id_user"] = str(id_user)
     result_interview["experience"] = str(result_interview["experience"])
     if updated_state.get("is_completed"):
-        await message.answer("Дякуємо! Ваш профіль успішно заповнено. Ми зв'яжемося з вами найближчим часом!")
+        await message.answer("Thank you! Your profile has been successfully completed. We will contact you shortly!")
         print(updated_state.get("candidate"))
         try:
             await insert_data_for_hr_about_review(updated_state.get("candidate"))#table_name="for_hr_about_review"
@@ -271,7 +271,7 @@ async def process_search_query(message: Message, bot: bot,state):
 async def process_search_user_reviews(message: Message, bot: bot,state):
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
         user_id = message.from_user.id
-        user_review = await get_data_user_reviews(user_id)
+        user_review = await select_data_user_reviews(user_id)
 
         if not user_review:
             await message.answer("You not have reviews yet 😔")
@@ -301,7 +301,7 @@ async def process_search_user_reviews(message: Message, bot: bot,state):
 async def process_search_message_to_user(message: Message, bot: bot,state):
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
         user_id = message.from_user.id
-        messages_to_user = await get_data_user_get_messages(user_id)
+        messages_to_user = await select_data_user_get_messages(user_id)
         if not messages_to_user:
             await message.answer("Nobody have send you messages yet 😔")
             await state.clear()
