@@ -5,18 +5,23 @@ from sqlalchemy import BigInteger, Integer, String, DateTime, Boolean, Text, Dat
 from sqlalchemy.sql import func
 from bot.create_bot import db_manager
 from sqlalchemy.ext.asyncio import AsyncSession
-
+import logging
 DATABASE_URL = config('DATABASE_URL')
 
-async def connect_to_db():
-    clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
-    conn = await asyncpg.connect(clean_url)
-    return conn
+# async def connect_to_db():
+#     clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
+#     conn = await asyncpg.connect(clean_url)
+#     return conn
 
-try:
-    asyncio.get_event_loop().create_task(create_table_users())
-except RuntimeError:
-    pass
+logger = logging.getLogger(__name__)
+
+def _parse_list_to_str(data_list):
+    """Converts a list (e.g., ['Python', 'SQL']) into a comma-separated string."""
+    if not data_list:
+        return ""
+    if isinstance(data_list, list):
+        return ", ".join(map(str, data_list))
+    return str(data_list)
 
 #create table
 async def create_table_users(table_name='users_reg'):
@@ -31,7 +36,10 @@ async def create_table_users(table_name='users_reg'):
             ]
         )
 
-async def create_table_vacancies(table_name='vacancie'):
+try:
+    asyncio.get_event_loop().create_task(create_table_users())
+except RuntimeError:
+    pass
 
 async def create_table_vacancies(table_name='vacancie'):
     async with db_manager as client:
@@ -60,9 +68,8 @@ async def create_table_reviews(table_name="reviews"):
             table_name=table_name,
             columns=[
                 {'name': 'id', 'type': Integer, 'primary_key': True, 'autoincrement': True},
-                # Оптимізація: типи id_vacancie та id_user змінено на Integer/BigInteger для зв'язків
-                {'name': 'id_vacancie', 'type': Integer},
-                {'name': 'id_user', 'type': BigInteger},
+                {'name': 'id_vacancie', 'type':  String(255)},
+                {'name': 'id_user', 'type': String(255)},
                 {'name': 'status', 'type': Boolean, 'default': True},
                 {'name': 'location', 'type': String(255)},
                 {'name': 'work_mode', 'type': String(255)},
@@ -84,6 +91,7 @@ async def create_table_for_hr_about_review(table_name="for_hr_about_review"):
                 {'name': 'skills', 'type': String(255)},
                 {'name': 'experience', 'type': String(255)},
                 {'name': 'git_hub_url', 'type': String(255)},
+                {'name': 'status', 'type': String(50), 'default': 'pending'},
             ]
         )
 
@@ -160,20 +168,21 @@ async def insert_data_for_hr_about_review(data: dict, table_name="for_hr_about_r
     skills_str = _parse_list_to_str(data.get('skills'))
 
     query = text(f"""
-        INSERT INTO {table_name} (id_vacancie, id_user, location, work_mode, skills, experience, git_hub_url)
-        VALUES (:id_vacancie, :id_user, :location, :work_mode, :skills, :experience, :git_hub_url)
+        INSERT INTO {table_name} (id_vacancie, id_user, location, work_mode, skills, experience, git_hub_url, status)
+        VALUES (:id_vacancie, :id_user, :location, :work_mode, :skills, :experience, :git_hub_url, :status)
     """)
 
     async with db_manager.session() as session:
         try:
             await session.execute(query, {
-                'id_vacancie': int(data.get('id_vacancy')),
-                'id_user': int(data.get('id_user')),
+                'id_vacancie': data.get('id_vacancy'),
+                'id_user': data.get('id_user'),
                 'location': data.get('location'),
                 'work_mode': data.get('work_mode'),
                 'skills': skills_str,
                 'experience': data.get('experience'),
-                'git_hub_url': data.get('git_hub')
+                'git_hub_url': data.get('github'),
+                'status': data.get('status')
             })
             await session.commit()
         except Exception as e:
@@ -197,8 +206,6 @@ async def insert_data_user_get_messages(data: dict, table_name="messages_to_user
         except Exception as e:
             logger.error(f"Error inserting message to user: {e}")
             return False
-
-async def insert_to_talent_pool(user_id: int, location: str, skills: list | str, experience: str, table_name="talent_pool"):
 
 async def insert_vacancies(data: dict, table_name='vacancie'):
     skills_str = _parse_list_to_str(data.get('skills'))
@@ -247,13 +254,13 @@ async def select_all_vacancies(table_name='vacancie'):
     async with db_manager as client:
         return await client.select_data(table_name=table_name)
 
-async def select_search_vacancie(data: str, table_name="vacancie"):
-    if data.isdigit():
+async def select_search_vacancie(id_vacancy: int, table_name="vacancie"):
+    if isinstance(id_vacancy, int):
         query = text(f"SELECT * FROM {table_name} WHERE id = :search_value")
-        params = {"search_value": int(data)}
+        params = {"search_value": int(id_vacancy)}
     else:
         query = text(f"SELECT * FROM {table_name} WHERE job_position ILIKE :search_value")
-        params = {"search_value": f"%{data}%"}
+        params = {"search_value": f"%{id_vacancy}%"}
 
     async with db_manager.session() as session:
         result = await session.execute(query, params)
@@ -266,7 +273,10 @@ async def select_data_for_hr_about_review(id_vacancie, id_user, table_name="for_
         WHERE id_user = :id_user AND id_vacancie = :id_vacancie
     """)
     async with db_manager.session() as session:
-        result = await session.execute(query, {'id_user': int(id_user), 'id_vacancie': int(id_vacancie)})
+        result = await session.execute(query, {
+            'id_user': int(id_user), 
+            'id_vacancie': int(id_vacancie)
+        })
         row = result.mappings().first()
         return dict(row) if row else None
 
@@ -282,15 +292,15 @@ async def select_data_user_reviews(user_id: int, table_name="reviews"):
         result = await session.execute(query, {'id_user': int(user_id)})
         return [dict(row) for row in result.mappings().all()]
 
-async def select_data_all_reviews(table_name="reviews"):
-    # Очищено від брудних перевірок NULLIF(..., 'None')
+async def select_data_all_reviews(table_name="for_hr_about_review"):
     query = text(f"""
         SELECT r.id_vacancie, r.status, r.location, r.work_mode, r.experience, r.id_user,
-               v.company_name, v.job_position, r.skills, u.full_name, u.user_login
+               v.company_name, v.job_position, r.skills, r.git_hub_url, u.full_name, u.user_login
         FROM {table_name} r
         LEFT JOIN vacancie v ON r.id_vacancie = v.id
         LEFT JOIN users_reg u ON r.id_user = u.user_id
-        WHERE r.id_vacancie IS NOT NULL AND r.status = TRUE
+        WHERE r.id_vacancie IS NOT NULL
+          AND r.status = 'pending'
     """)
     async with db_manager.session() as session:
         result = await session.execute(query)
