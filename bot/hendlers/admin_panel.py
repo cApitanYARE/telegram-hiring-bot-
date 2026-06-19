@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 
 from aiogram.utils.chat_action import ChatActionSender
 from bot.create_bot import admins, bot
-from bot.db_handler.db_funk import select_all_users, insert_vacancies, select_all_vacancies, select_data_all_reviews, select_user_data, update_user_status_as_reject,insert_data_user_get_messages, select_data_for_hr_about_review, select_search_vacancie
+from bot.db_handler.db_funk import select_all_users, insert_vacancies, select_all_vacancies, select_data_all_reviews, select_user_data, update_user_status,insert_data_user_get_messages, select_data_for_hr_about_review, select_search_vacancie
 #insert_user_to_talant_pool
 from bot.keyboards.kbs import home_page_kb, main_kb
 from bot.keyboards.inline_kbs import sent_answear_on_review_inline_kb
@@ -271,21 +271,20 @@ async def vacancy_reject(callback: CallbackQuery, state: FSMContext):
         user_login = user_data.get('user_login')
         username_str = f" (@{user_login})" if user_login else ""
 
-        await update_user_status_as_reject(int(user_id),int(vacancy_id))
+        await update_user_status(int(user_id),int(vacancy_id), "reject")
     else:
         candidate_name = f"ID: {user_id}"
         username_str = ""
 
     job_position = vacancy_data[0].get('job_position')
     await callback.message.edit_text(
-        text=f"❌ The candidate <b>{candidate_name}</b>{username_str} is rejected on vacancy ID: {vacancy_id}.\nPosition: {job_position}",
-        parse_mode="HTML"
+        text=f"❌ The candidate <b>{candidate_name}</b>{username_str} is rejected on vacancy ID: {vacancy_id}.\nPosition: {job_position}"
     )
     await asyncio.sleep(5)
     try:
         await callback.message.delete()
     except Exception as e:
-        print(f"Помилка видалення: {e}")
+        print(f"{e}")
 
 @admin_router.callback_query(F.data.startswith("vacancy_talent_pool:"))
 async def candidate_move_to_talant_pool(callback: CallbackQuery, state: FSMContext):
@@ -300,22 +299,27 @@ async def candidate_move_to_talant_pool(callback: CallbackQuery, state: FSMConte
     skills_str = str(data_parts[5])
     vacancy_id = int(data_parts[6])
 
-    user_info = await get_user_data(user_id)
+    user_data = await select_user_data(user_id)
 
-    if user_info and isinstance(user_info, dict):
-        candidate_name = user_info.get('full_name') or 'Not specified'
-        user_login = user_info.get('user_login')
+    if user_data and isinstance(user_data, dict):
+        candidate_name = user_data.get('full_name') or 'Not specified'
+        user_login = user_data.get('user_login')
         username_str = f" (@{user_login})" if user_login else ""
 
         #await insert_user_to_talant_pool(str(user_id),str(location),str(skills_str),str(experience))
-        await set_user_status_as_false(str(user_id),str(vacancy_id))
+        await update_user_status(str(user_id),str(vacancy_id), "pool")
     else:
         candidate_name = f"ID: {user_id}"
         username_str = ""
 
-    await callback.message.answer(
-        text=f"❌ The candidate *{candidate_name}*{username_str} is rejected on vacancy ID: {vacancy_id}. And added to talant pool",
+    await callback.message.edit_text(
+        text=f"📂The candidate *{candidate_name}*{username_str} is added to talent pool."
     )
+    await asyncio.sleep(5)
+    try:
+        await callback.message.delete()
+    except Exception as e:
+        print(f"{e}")
 
 class HRResponsrState(StatesGroup):
     waiting_for_comment = State()
