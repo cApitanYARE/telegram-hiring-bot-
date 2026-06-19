@@ -1,6 +1,6 @@
 import os
 from langchain_openai import ChatOpenAI
-from bot.ai.candidate_schemas import CandidateState, CandidateProfile, ScreeningResponse
+from bot.ai.candidate_schemas import CandidateState, CandidateProfile, ScreeningResponse, CandidateVerdict
 from langchain_core.messages import SystemMessage
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
@@ -97,3 +97,30 @@ async def interviewer(state: CandidateState):
         "asked_skills": new_asked_skills,
         "messages": [ai_message] 
     }
+
+async def analyze_interviewer(vacancy_data: dict, candidate_profile: dict):
+    analyzer_llm = llm.with_structured_output(CandidateVerdict)
+
+    system_prompt = f"""You are an expert IT Technical Recruiter and Talent Acquisition Specialist.
+    Your task is to objectively evaluate a candidate's profile against the job vacancy requirements.
+
+    VACANCY REQUIREMENTS:
+    {vacancy_data}
+
+    CANDIDATE PROFILE:
+    {candidate_profile}
+
+    EVALUATION GUIDELINES:
+    1. match_percentage: Calculate logically. Full match of core skills and experience = 90-100%. Missing core skills should drop this significantly.
+    2. verdict: Set "Hire" if match_percentage >= 70% and there are no critical blockers, otherwise "No Hire".
+    3. matched_skills & missing_skills: Compare the 'skills' and 'nice_to_have' fields from the vacancy with the candidate's 'skills'.
+    4. pros & cons: Evaluate 'experience', 'work_mode' alignment, 'location', and 'git_hub_url' (if it's None/empty, note it as a minor risk if relevant, but not a critical blocker).
+    5. summary: Provide a 2–3 sentence synthesis of why this verdict and percentage were chosen.
+
+    OUTPUT REQUIREMENTS:
+    - You must strictly fulfill the schema constraints.
+    - The text fields (`summary`, `pros`, `cons`) must be written in English.
+    - Technical skill names must remain in English as specified in the data.
+    """
+
+    return await analyzer_llm.ainvoke(system_prompt)
