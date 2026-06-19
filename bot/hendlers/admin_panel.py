@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 
 from aiogram.utils.chat_action import ChatActionSender
 from bot.create_bot import admins, bot
-from bot.db_handler.db_funk import get_all_users, add_vacancies, get_all_vacancies, get_data_all_reviews, get_user_data, set_user_status_as_false,insert_data_user_get_messages, select_data_for_hr_about_review
+from bot.db_handler.db_funk import select_all_users, insert_vacancies, select_all_vacancies, select_data_all_reviews, select_user_data, update_user_status_as_false,insert_data_user_get_messages, select_data_for_hr_about_review, select_search_vacancie
 #insert_user_to_talant_pool
 from bot.keyboards.kbs import home_page_kb, main_kb
 from bot.keyboards.inline_kbs import sent_answear_on_review_inline_kb
@@ -21,6 +21,9 @@ from tkinter.filedialog import askopenfilename
 
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+
+from bot.ai.candidate_agent import analyze_interviewer
+
 
 admin_router = Router()
 
@@ -184,7 +187,7 @@ async def get_profile(message: Message):
 
 @admin_router.message(F.text == "⚙️ Received Applications")
 async def get_received_applications(message: Message):
-    all_reviews = await get_data_all_reviews()
+    all_reviews = await select_data_all_reviews()
 
     hr_id = message.from_user.id
 
@@ -200,38 +203,55 @@ async def get_received_applications(message: Message):
         user_login = review.get('user_login')
         username_str = f" (@{user_login})" if user_login else ""
 
-        rates_review = await select_data_for_hr_about_review(review.get('id_vacancie'),review.get('id_user'))
+        candidate_data = await select_data_for_hr_about_review(int(review.get('id_vacancie')), int(review.get('id_user')))
+        vacancy_data = await select_search_vacancie(int(review.get('id_vacancie')))
 
-        if not rates_review:
-            return await message.answer("❌ Дані про порівняння цього відгуку не знайдені в базі.")
+        rate_candidate = await analyze_interviewer(vacancy_data, candidate_data)
 
         if review.get('status'):
             status_str = "🟢 In work"
         else:
             status_str = "🔴 Closed"
+
+        #print(type(rate_candidate))
+
         response_text = (
-            #abiut Vacancy
-            f"📋 *Status: {status_str}*\n\n"
-            f"📋 *Vacancy ID: {review.get('id_vacancie')}*\n\n"
-            f"🏢 *Company:* {review.get('company_name') or 'Not specified'}\n"
-            f"💼 *Job Position:* {review.get('job_position') or 'Not specified'}\n\n"
-            #abiut user
-            f"👤 *Candidate:* {candidate_name}{username_str}\n"
-            f"⏳ *Experience:* {review.get('experience') or 'Not specified'}\n"
-            f"🛠 *Main skills (Skills):*\n{skills_str}\n"
-            f"📍 *Location:* {review.get('location') or 'Not specified'}\n"
-            f"🔄 *Work Mode:* {review.get('work_mode') or 'Not specified'}\n\n"
+            # --- About Vacancy ---
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📌 <b>Information about Vacancy</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📋 <b>Status:</b> {status_str}\n"
+            f"📋 <b>Vacancy ID:</b> {review.get('id_vacancie')}\n"
+            f"🏢 <b>Company:</b> {review.get('company_name')}\n"
+            f"💼 <b>Job Position:</b> {review.get('job_position') or 'Not specified'}\n\n"
 
-            f"Rate review.\n\n"
-            f"⏳ *Experience:* {rates_review.get('experience') or 'Not specified'}\n"
-            f"🛠 *Main skills:*\n{rates_review.get('skills') or 'Not specified'}\n"
-            f"📍 *Location:* {rates_review.get('location') or 'Not specified'}\n"
-            f"🔄 *Work Mode:* {rates_review.get('work_mode') or 'Not specified'}\n\n"
+            # --- About Candidate ---
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📌 <b>Information about Candidate</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 <b>Candidate:</b> {candidate_name}{username_str}\n"
+            f"⏳ <b>Experience:</b> {review.get('experience') or 'Not specified'} year\n"
+            f"📍 <b>Location:</b> {review.get('location') or 'Not specified'}\n"
+            f"🔄 <b>Work Mode:</b> {review.get('work_mode') or 'Not specified'}\n"
+            f"🔗 <b>GitHub Link:</b> {review.get('git_hub_url') or 'Not specified'}\n\n"
+            f"🛠 <b>Main skills (Skills):</b>\n{skills_str}\n\n"
+
+            # --- AI ---
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🤖 <b>Response from AI</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 <b>Percentage:</b> {rate_candidate.match_percentage}%\n"
+            f"⚖️ <b>Verdict:</b> {rate_candidate.verdict}\n\n"
+            f"✅ <b>Matched Skills:</b> {rate_candidate.matched_skills}\n"
+            f"❌ <b>Missing Skills:</b> {rate_candidate.missing_skills}\n\n"
+            f"👍 <b>Pros:</b> {rate_candidate.pros}\n\n"
+            f"👎 <b>Cons:</b> {rate_candidate.cons}\n\n"
+            f"📋 <b>Summary:</b> {rate_candidate.summary}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━"
         )
-
         await message.answer(
             text=response_text,
-            reply_markup=sent_answear_on_review_inline_kb(review.get('id_user'), review.get('id_vacancie'), hr_id)
+            reply_markup=sent_answear_on_review_inline_kb(review.get('id_user'), review.get('id_vacancie'), hr_id),
         )
 
 @admin_router.callback_query(F.data.startswith("vacancy_reject:"))
@@ -242,7 +262,7 @@ async def vacancy_reject(callback: CallbackQuery, state: FSMContext):
     user_id = int(data_parts[1])     
     vacancy_id = int(data_parts[2])
 
-    user_info = await get_user_data(user_id)
+    user_info = await select_user_data(user_id)
 
     if user_info and isinstance(user_info, dict):
         candidate_name = user_info.get('full_name') or 'Not specified'
