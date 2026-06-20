@@ -24,6 +24,7 @@ from aiogram.fsm.context import FSMContext
 
 from bot.ai.candidate_agent import analyze_interviewer
 
+from datetime import datetime
 
 admin_router = Router()
 
@@ -43,7 +44,6 @@ def get_file_path():
     
     root.destroy() 
     return file_path
-
 
 class VacancyStates(StatesGroup):
     wait_for_file = State()
@@ -69,7 +69,7 @@ async def uploud_vacancies(message: Message, bot: bot, state: FSMContext):
     file_name = document.file_name
 
     if not (file_name.endswith('.txt') or file_name.endswith('.docx') or file_name.endswith('.pdf')):
-        await message.answer("❌ Непідтримуваний формат файлу. Надішліть .txt, .docx або .pdf")
+        await message.answer("❌ Error. You must send .txt, .docx або .pdf")
         return
 
     file_info = await bot.get_file(file_id)
@@ -152,9 +152,42 @@ async def uploud_vacancies(message: Message, bot: bot, state: FSMContext):
         skills_str = ", ".join(data["skills"]) if data["skills"] else "Not specified"
         nice_to_have_str = ", ".join(data["nice_to_have"]) if data["nice_to_have"] else "Not specified"
 
-        await add_vacancies(data)
+        from openai import OpenAI
+        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        #formatted_date = current_date.strftime("%d.%m.%Y")
+        formatted_text = (
+            #f"created_at:   {formatted_date}\n"
+            f"company_name: {data["company_name"]}\n"
+            f"job_position: {data["job_position"]}\n"
+            f"location:     {data["location"]}\n"
+            f"work_mode:    {data["work_mode"]}\n"
+            f"salary:       {data["salary"]}\n"           
+            f"experience:   {data["experience"]}\n"
+            f"skills:       {data["skills"]}\n"
+            f"nice_to_have: {data["nice_to_have"]}\n"            
+            f"more_about_it:{data["more_about_it"]}\n"
+        )
+        try: 
+            response = await openai_client.embeddings.create(
+                model="text-embedding-3-small",
+                input=formatted_text
+            )
+            embedding_vector = response.data[0].embedding
+        except Exception as e:
+            print(f"{"OpenAI error: {e}"}")
+            return None
+
+        data["embedding"] = embedding_vector
+
+        new_id = await insert_vacancies(data)
         await state.clear()
-        response_text = "Vacancies is added at DB"
+
+        if not new_id:
+            length = await select_search_vacancie(count=True) 
+            new_id = length + 1
+
+        response_text = f"Vacancy seccsesfully added at DB with ID {new_id}"
 
     await message.answer(text=response_text, reply_markup=main_kb(message.from_user.id))
 
