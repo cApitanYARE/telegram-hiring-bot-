@@ -169,13 +169,13 @@ async def uploud_vacancies(message: Message, bot: bot, state: FSMContext):
             f"more_about_it:{data["more_about_it"]}\n"
         )
         try: 
-            response = await openai_client.embeddings.create(
+            response = openai_client.embeddings.create(
                 model="text-embedding-3-small",
                 input=formatted_text
             )
             embedding_vector = response.data[0].embedding
         except Exception as e:
-            print(f"{"OpenAI error: {e}"}")
+            print(f"OpenAI error: {e}")
             return None
 
         data["embedding"] = embedding_vector
