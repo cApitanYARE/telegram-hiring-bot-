@@ -138,7 +138,7 @@ class Form(StatesGroup):
 async def vacancy_respond(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     vacancy_id = callback.data.split(":")[1]
-    vacancy_data = await search_vacancie(vacancy_id)
+    vacancy_data = await select_search_vacancie(vacancy_id)
     vacancy_data = dict(vacancy_data[0]) if vacancy_data else None
 
     if not vacancy_data:
@@ -200,14 +200,18 @@ async def handle_ai_interview_chat(message: Message, state: FSMContext):
     id_user = message.from_user.id
 
     result_interview = updated_state.get("candidate")
-    result_interview["id_vacancy"] = str(vacancy_id)
-    result_interview["id_user"] = str(id_user)
+    result_interview["id_vacancy"] = int(vacancy_id)
+    result_interview["id_user"] = int(id_user)
     result_interview["experience"] = str(result_interview["experience"])
+    result_interview["github"] = str(result_interview["github"])
+    #
+    result_interview["status"] = "pending"
     if updated_state.get("is_completed"):
         await message.answer("Thank you! Your profile has been successfully completed. We will contact you shortly!")
         print(updated_state.get("candidate"))
         try:
             await insert_data_for_hr_about_review(updated_state.get("candidate"))#table_name="for_hr_about_review"
+            await insert_data_review(updated_state.get("candidate"))
         except psycopg2.Error as e:
             print(f"DB error {e}")
         await state.clear()
@@ -222,6 +226,20 @@ class SearchVacancyStates(StatesGroup):
 async def process_search_query(message: Message, bot: bot,state: FSMContext):
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
         await message.answer("Write the name or the ID of vacancie...")
+
+        from openai import OpenAI
+        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+        try: 
+            response = await openai_client.embeddings.create(
+                model="text-embedding-3-small",
+                input=formatted_text
+            )
+            embedding_vector = response.data[0].embedding
+        except Exception as e:
+            print(f"{"OpenAI error: {e}"}")
+            return None
+
         await state.set_state(SearchVacancyStates.wait_for_query)
 
 @user_router.message(SearchVacancyStates.wait_for_query, F.text)
@@ -230,7 +248,7 @@ async def get_vacancy_by_id_or_name(message: Message, state: FSMContext):
     input_data = message.text
     await state.update_data(search_query=input_data)
 
-    vacancies_list = await search_vacancie(input_data)
+    vacancies_list = await select_search_vacancie(input_data)
 
     if not vacancies_list:
             await message.answer("Vacancy not found 😔")
