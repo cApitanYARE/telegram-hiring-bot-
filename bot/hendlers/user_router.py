@@ -226,20 +226,6 @@ class SearchVacancyStates(StatesGroup):
 async def process_search_query(message: Message, bot: bot,state: FSMContext):
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
         await message.answer("Write the name or the ID of vacancie...")
-
-        from openai import OpenAI
-        openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-        try: 
-            response = await openai_client.embeddings.create(
-                model="text-embedding-3-small",
-                input=formatted_text
-            )
-            embedding_vector = response.data[0].embedding
-        except Exception as e:
-            print(f"{"OpenAI error: {e}"}")
-            return None
-
         await state.set_state(SearchVacancyStates.wait_for_query)
 
 @user_router.message(SearchVacancyStates.wait_for_query, F.text)
@@ -248,35 +234,56 @@ async def get_vacancy_by_id_or_name(message: Message, state: FSMContext):
     input_data = message.text
     await state.update_data(search_query=input_data)
 
-    vacancies_list = await select_search_vacancie(input_data)
+    vacancies_list = []
 
-    if not vacancies_list:
-            await message.answer("Vacancy not found 😔")
-            await state.clear()
-            return
-    
-    await message.answer(f"🔍 Found {len(vacancies_list)} vacancies:")
+    async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
+        
+        if input_data.isdigit():
+            vacancies_list = await select_search_vacancie(id_vacancy=int(input_data))
+        else:
+            try: 
+                response = await openai_client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=input_data
+                )
+                embedding_vector = response.data[0].embedding
+                
+                vacancies_list = await select_search_vacancie(embedding_vector=embedding_vector)
+                
+            except Exception as e:
+                print(f"OpenAI error during search: {e}")
+                await message.answer("❌ Error processing your request via AI. Try typing simpler keywords.")
+                await state.clear()
+                return
 
-    for vacancy in vacancies_list:
-        skills_str = vacancy.get('skills') or 'Not specified'
-        nice_to_have_str = vacancy.get('nice_to_have') or 'Not specified'
+        if not vacancies_list:
+                await message.answer("Vacancy not found 😔")
+                await state.clear()
+                return
+        
+        await message.answer(f"🔍 Found {len(vacancies_list)} vacancies:")
 
-        response_text = (
-                f"📋 *Vacancy ID: {vacancy.get('id')}*\n\n"
-                f"🏢 *Company:* {vacancy.get('company_name') or 'Not specified'}\n"
-                f"💼 *Job Position:* {vacancy.get('job_position') or 'Not specified'}\n"
-                f"📍 *Location:* {vacancy.get('location') or 'Not specified'}\n"
-                f"🔄 *Work Mode:* {vacancy.get('work_mode') or 'Not specified'}\n"
-                f"💰 *Salary:* {vacancy.get('salary') or 'Not specified'} {vacancy.get('currency') or ''}\n"
-                f"⏳ *Experience:* {vacancy.get('experience') or 'Not specified'}\n\n"
-                f"🛠 *Main skills (Skills):*\n{skills_str}\n\n"
-                f"⭐️ *Nice to have:*\n{nice_to_have_str}\n\n"
-                f"📝 *About the project / Additional info:* \n{vacancy.get('more_about_it') or 'Not specified'}"
-        )
-        await message.answer(
-        text=response_text, 
-        reply_markup=sent_review_inline_kb(vacancy.get('id')),
-        )
+        for vacancy in vacancies_list:
+            skills_str = vacancy.get('skills') or 'Not specified'
+            nice_to_have_str = vacancy.get('nice_to_have') or 'Not specified'
+
+            response_text = (
+                    f"📋 *Vacancy ID: {vacancy.get('id')}*\n\n"
+                    f"🏢 *Company:* {vacancy.get('company_name') or 'Not specified'}\n"
+                    f"💼 *Job Position:* {vacancy.get('job_position') or 'Not specified'}\n"
+                    f"📍 *Location:* {vacancy.get('location') or 'Not specified'}\n"
+                    f"🔄 *Work Mode:* {vacancy.get('work_mode') or 'Not specified'}\n"
+                    f"💰 *Salary:* {vacancy.get('salary') or 'Not specified'} {vacancy.get('currency') or ''}\n"
+                    f"⏳ *Experience:* {vacancy.get('experience') or 'Not specified'}\n\n"
+                    f"🛠 *Main skills (Skills):*\n{skills_str}\n\n"
+                    f"⭐️ *Nice to have:*\n{nice_to_have_str}\n\n"
+                    f"📝 *About the project / Additional info:* \n{vacancy.get('more_about_it') or 'Not specified'}"
+            )
+            await message.answer(
+            text=response_text, 
+            reply_markup=sent_review_inline_kb(vacancy.get('id')),
+            )
+    await state.clear()
 
 @user_router.message(F.text == "👤 About the author")
 async def process_search_query(message: Message, bot: bot,state):
