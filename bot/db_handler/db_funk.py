@@ -210,13 +210,16 @@ async def insert_vacancies(data: dict, table_name='vacancies'):
     skills_str = _parse_list_to_str(data.get('skills'))
     nice_to_have_str = _parse_list_to_str(data.get('nice_to_have'))
 
+    raw_embedding = data.get('embedding')
+    embedding_str = str(raw_embedding) if isinstance(raw_embedding, list) else None
+
     query = text(f"""
         INSERT INTO {table_name} (
             is_active, created_at, company_name, job_position, location, 
-            work_mode, salary, experience, skills, nice_to_have, more_about_it
+            work_mode, salary, experience, skills, nice_to_have, more_about_it, embedding
         )
         VALUES (TRUE, NOW(), :company_name, :job_position, :location, :work_mode, 
-                :salary, :experience, :skills, :nice_to_have, :more_about_it)
+                :salary, :experience, :skills, :nice_to_have, :more_about_it, CAST(:embedding AS vector))
     """)
 
     async with db_manager.session() as session:
@@ -230,11 +233,13 @@ async def insert_vacancies(data: dict, table_name='vacancies'):
                 'experience': data.get('experience'),
                 'skills': skills_str,
                 'nice_to_have': nice_to_have_str,
-                'more_about_it': data.get('more_about_it')
+                'more_about_it': data.get('more_about_it'),
+                'embedding':  embedding_str
             })
             await session.commit()
             logger.debug("Vacancy successfully added to the database!")
         except Exception as e:
+            await session.rollback()
             logger.error(f"Error while writing a job: {e}")
 
 
@@ -243,7 +248,7 @@ async def select_user_data(user_id: int, table_name='users_reg'):
     async with db_manager as client:
         return await client.select_data(table_name=table_name, where_dict={'user_id': user_id}, one_dict=True)
     
-async def select_all_users(table_name='users_reg'):
+async def select_all_users(count=False, table_name='users_reg'):
     async with db_manager as client:
         all_users = await client.select_data(table_name=table_name)
         return len(all_users) if count else all_users
@@ -262,15 +267,17 @@ async def select_search_vacancie(id_vacancy: int | str = None, embedding_vector:
             params = {"search_value": id_vacancy}
 
         elif embedding_vector is not None:
+            embedding_str = str(embedding_vector) if isinstance(embedding_vector, list) else embedding_vector
+
             query = text(f"""
-                SELECT *, (embedding <=> :vector) as distance 
+                SELECT *, (embedding <=> CAST(:embedding AS vector)) as distance 
                 FROM {table_name} 
-                WHERE status = 'active' 
-                ORDER BY embedding <=> :vector ASC 
+                WHERE is_active = TRUE
+                ORDER BY embedding <=> CAST(:embedding AS vector) ASC 
                 LIMIT :limit_val
             """)
             params = {
-                "vector": embedding_vector,
+                "embedding": embedding_str,
                 "limit_val": 3               
             }
 
