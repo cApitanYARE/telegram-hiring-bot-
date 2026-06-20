@@ -242,7 +242,10 @@ async def get_vacancy_by_id_or_name(message: Message, state: FSMContext):
             vacancies_list = await select_search_vacancie(id_vacancy=int(input_data))
         else:
             try: 
-                response = await openai_client.embeddings.create(
+                from openai import OpenAI
+                openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+                response = openai_client.embeddings.create(
                     model="text-embedding-3-small",
                     input=input_data
                 )
