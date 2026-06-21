@@ -9,7 +9,7 @@ def main_kb(user_telegram_id: int):
         ]
     else:
         kb_list = [
-            [KeyboardButton(text="🔍 Job search") ,KeyboardButton(text="Incoming messages")],
+            [KeyboardButton(text="🔍 Job search") ,KeyboardButton(text="💬 Incoming messages")],
             [KeyboardButton(text="📄 All vacancies"), KeyboardButton(text="💬 My reviews")],
             [KeyboardButton(text="👤 About the author"), KeyboardButton(text="🏢 About the company")]
         ]
