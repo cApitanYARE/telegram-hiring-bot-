@@ -138,11 +138,13 @@ class Form(StatesGroup):
 async def vacancy_respond(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     vacancy_id = callback.data.split(":")[1]
-    vacancy_data = await select_search_vacancie(vacancy_id)
+    #print(vacancy_id)
+    vacancy_data = await select_search_vacancie(id_vacancy = int(vacancy_id))
     vacancy_data = dict(vacancy_data[0]) if vacancy_data else None
 
+    print(vacancy_data)
     if not vacancy_data:
-        await callback.message.answer("На жаль, вакансію не знайдено.")
+        await callback.message.answer("Unfortunately, no job openings were found.")
         return
 
     vacancy_data.pop("created_at", None)
@@ -202,6 +204,7 @@ async def handle_ai_interview_chat(message: Message, state: FSMContext):
     result_interview = updated_state.get("candidate")
     result_interview["id_vacancy"] = int(vacancy_id)
     result_interview["id_user"] = int(id_user)
+    print( result_interview["id_vacancy"],result_interview["id_user"])
     result_interview["experience"] = str(result_interview["experience"])
     result_interview["github"] = str(result_interview["github"])
     #
@@ -211,7 +214,7 @@ async def handle_ai_interview_chat(message: Message, state: FSMContext):
         print(updated_state.get("candidate"))
         try:
             await insert_data_for_hr_about_review(updated_state.get("candidate"))#table_name="for_hr_about_review"
-            await insert_data_review(updated_state.get("candidate"))
+            #await insert_data_review(updated_state.get("candidate"))
         except psycopg2.Error as e:
             print(f"DB error {e}")
         await state.clear()
