@@ -1,13 +1,13 @@
 import asyncio
 from bot.create_bot import bot, dp, admins
-from bot.db_handler.db_funk import create_table_users, create_table_vacancies, get_all_users, create_table_reviews, create_table_messeges_to_user, create_table_talent_pool, create_table_for_hr_about_review
+from bot.db_handler.db_funk import create_table_users, create_table_vacancies, select_all_users, create_table_reviews, create_table_messeges_to_user, create_table_talent_pool, create_table_for_hr_about_review
 
 from bot.hendlers.admin_panel import admin_router
 from bot.hendlers.user_router import user_router
 
 from aiogram.types import BotCommand, BotCommandScopeDefault
 
-from bot.db_handler.db_funk import get_all_users
+from bot.db_handler.db_funk import select_all_users
 
 
 async def set_commands():
@@ -16,29 +16,31 @@ async def set_commands():
     await bot.set_my_commands(commands, BotCommandScopeDefault())
 
 async def start_bot():
-    await create_table_users()
-    await create_table_vacancies()
-    await create_table_reviews()
-    await create_table_messeges_to_user()
-    await create_table_talent_pool()
-    await create_table_for_hr_about_review()
+    try:
+        await create_table_users()
+        await create_table_vacancies()
+        await create_table_reviews()
+        await create_table_for_hr_about_review()
+        await create_table_messeges_to_user()
+        await create_table_talent_pool()
+    except Exception as e:
+        await bot.send_message(f"Error creating database table: {e}")
 
-    
     await set_commands()
-    count_users = await get_all_users(count=True)
+    count_users = await select_search_vacancie(count=True)
 
     try:
         for admin_id in admins:
             await bot.send_message(admin_id, f'I\'m online. Now in data base <b>{count_users}</b> reviews.')
-    except:
-        pass
+    except Exception as e:
+        await bot.send_message(f"Error admin_id: {e}")
 
 async def stop_bot():
     try:
         for admin_id in admins:
             await bot.send_message(admin_id, 'Bot is stopped.')
-    except:
-        pass
+    except Exception as e:
+        await bot.send_message(f"Error admin_id: {e}")
 
 async def main():
     for admin_id in admins:
