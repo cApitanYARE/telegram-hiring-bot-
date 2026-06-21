@@ -21,7 +21,8 @@ def sent_answear_on_review_inline_kb(user_id,vacancy_id, hr_id, experience = 0, 
         InlineKeyboardButton(text="Respond", callback_data=f"vacancy_respond_hr_to_user:{user_id}:{vacancy_id}:{hr_id}"),
         InlineKeyboardButton(text="Reject", callback_data=f"vacancy_reject:{user_id}:{vacancy_id}:{hr_id}"),
         InlineKeyboardButton(text="Add to Talent Pool", callback_data=f"vacancy_talent_pool:{user_id}:{hr_id}:{experience}:{location}:{skills_str}:{vacancy_id}")
-    
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=inline_kb_list)
+
+    
