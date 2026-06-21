@@ -61,22 +61,22 @@ async def create_table_vacancies(table_name='vacancies'):
             ]
         )
 
-async def create_table_reviews(table_name="reviews"):
-    async with db_manager as client:
-        await client.create_table(
-            table_name=table_name,
-            columns=[
-                {'name': 'id', 'type': Integer, 'primary_key': True, 'autoincrement': True},
-                {'name': 'id_vacancie', 'type':  String(255)},
-                {'name': 'id_user', 'type': String(255)},
-                {'name': 'status', 'type': Boolean, 'default': True},
-                {'name': 'location', 'type': String(255)},
-                {'name': 'work_mode', 'type': String(255)},
-                {'name': 'experience', 'type': String(255)},
-                {'name': 'skills', 'type': String(255)},
-                {'name': 'data_sent', 'type': DateTime, 'default': func.now()}
-            ]
-        )
+# async def create_table_reviews(table_name="reviews"):
+#     async with db_manager as client:
+#         await client.create_table(
+#             table_name=table_name,
+#             columns=[
+#                 {'name': 'id', 'type': Integer, 'primary_key': True, 'autoincrement': True},
+#                 {'name': 'id_vacancie', 'type':  Integer},
+#                 {'name': 'id_user', 'type': Integer},
+#                 {'name': 'status', 'type': Boolean, 'default': True},
+#                 {'name': 'location', 'type': String(255)},
+#                 {'name': 'work_mode', 'type': String(255)},
+#                 {'name': 'experience', 'type': String(255)},
+#                 {'name': 'skills', 'type': String(255)},
+#                 {'name': 'data_sent', 'type': DateTime, 'default': func.now()}
+#             ]
+#         )
 
 async def create_table_for_hr_about_review(table_name="for_hr_about_review"):
     async with db_manager as client:
@@ -290,7 +290,7 @@ async def select_search_vacancie(id_vacancy: int | str = None, embedding_vector:
         if count:
             return result.scalar()
             
-        return [dict(v) for v in result.mappings().all()]
+        return [dict(row) for row in result.mappings()]
 
 
 async def select_data_for_hr_about_review(id_vacancie, id_user, table_name="for_hr_about_review"):
@@ -324,20 +324,23 @@ async def select_data_all_reviews(table_name="for_hr_about_review"):
         SELECT r.id_vacancie, r.status, r.location, r.work_mode, r.experience, r.id_user,
                v.company_name, v.job_position, r.skills, r.git_hub_url, u.full_name, u.user_login
         FROM {table_name} r
-        LEFT JOIN vacancie v ON r.id_vacancie = v.id
+        LEFT JOIN vacancies v ON r.id_vacancie = v.id
         LEFT JOIN users_reg u ON r.id_user = u.user_id
         WHERE r.id_vacancie IS NOT NULL
-          AND r.status = 'reject'
+          AND r.status = 'pending'
     """)
     async with db_manager.session() as session:
-        result = await session.execute(query)
-        return [dict(row) for row in result.mappings().all()]
+        try:
+            result = await session.execute(query)
+            return [dict(row) for row in result.mappings().all()]
+        except Exception as e:
+            print(e)
 
 async def select_data_user_get_messages(user_id: int, table_name="messages_to_user"):
     query = text(f"""
         SELECT m.id_hr, m.id_vacancie, m.id_user, m.text, v.company_name, v.job_position, v.skills
         FROM {table_name} m
-        INNER JOIN vacancie v ON m.id_vacancie = v.id  
+        INNER JOIN vacancies v ON m.id_vacancie = v.id  
         WHERE m.id_user = :id_user
     """)
     async with db_manager.session() as session:
