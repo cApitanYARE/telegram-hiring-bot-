@@ -258,6 +258,8 @@ async def select_all_vacancies(table_name='vacancies'):
         return await client.select_data(table_name=table_name)
 
 async def select_search_vacancie(id_vacancy: int | str = None, embedding_vector: list = None, count=False, table_name="vacancies"):
+
+
     if count:
         query = text(f"SELECT COUNT(id) FROM {table_name}")
         params = {}
@@ -269,18 +271,54 @@ async def select_search_vacancie(id_vacancy: int | str = None, embedding_vector:
         elif embedding_vector is not None:
             embedding_str = str(embedding_vector) if isinstance(embedding_vector, list) else embedding_vector
 
-            query = text(f"""
-                SELECT *, (embedding <=> CAST(:embedding AS vector)) as distance 
-                FROM {table_name} 
-                WHERE is_active = TRUE
-                ORDER BY embedding <=> CAST(:embedding AS vector) ASC 
-                LIMIT :limit_val
-            """)
+            meta_filters = ["is_active = TRUE"]
             params = {
                 "embedding": embedding_str,
-                "limit_val": 3               
+                "query_text": query_text,
+                "limit_val": 2  
             }
+            if min_salary is not None:
+                meta_filters.append("salary >= :min_salary")
+                params["min_salary"] = min_salary
+            
+            if location is not None:
+                meta_filters.append("location = :location")
+                params["location"] = location
 
+            where_clause = " AND ".join(meta_filters)
+
+            query = text(f"""
+                WITH filtered_vacancies AS (
+                    SELECT id, job_position, company, salary, location, embedding, text_search_vector, raw_text
+                    FROM {table_name}
+                    WHERE {where_clause}
+                ),
+                user_query AS (
+                    SELECT 
+                        CAST(:embedding AS vector) AS query_embedding, 
+                        plainto_tsquery('english', :query_text) AS query_ts
+                ),
+                vector_results AS (
+                    SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> (SELECT query_embedding FROM user_query)) AS rank
+                    FROM filtered_vacancies
+                    LIMIT 20
+                ),
+                fts_results AS (
+                    SELECT id, ROW_NUMBER() OVER (ORDER BY ts_rank(text_search_vector, (SELECT query_ts FROM user_query)) DESC) AS rank
+                    FROM filtered_vacancies
+                    WHERE text_search_vector @@ (SELECT query_ts FROM user_query)
+                    LIMIT 20
+                )
+                SELECT 
+                    fv.*,
+                    COALESCE(1.0 / (60 + vr.rank), 0.0) + COALESCE(1.0 / (60 + fr.rank), 0.0) AS rrf_score
+                FROM filtered_vacancies fv
+                LEFT JOIN vector_results vr ON fv.id = vr.id
+                LEFT JOIN fts_results fr ON fv.id = fr.id
+                WHERE vr.id IS NOT NULL OR fr.id IS NOT NULL
+                ORDER BY rrf_score DESC
+                LIMIT :limit_val
+            """)
         else:
             query = text(f"SELECT * FROM {table_name} WHERE job_position ILIKE :search_value")
             params = {"search_value": f"%{id_vacancy}%"}
@@ -291,7 +329,6 @@ async def select_search_vacancie(id_vacancy: int | str = None, embedding_vector:
             return result.scalar()
             
         return [dict(row) for row in result.mappings()]
-
 
 async def select_data_for_hr_about_review(id_vacancie, id_user, table_name="for_hr_about_review"):
     query = text(f"""

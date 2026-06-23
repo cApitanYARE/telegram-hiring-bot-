@@ -166,7 +166,7 @@ async def uploud_vacancies(message: Message, bot: bot, state: FSMContext):
             f"experience:   {data["experience"]}\n"
             f"skills:       {data["skills"]}\n"
             f"nice_to_have: {data["nice_to_have"]}\n"            
-            f"more_about_it:{data["more_about_it"]}\n"
+            #f"more_about_it:{data["more_about_it"]}\n"
         )
         try: 
             response = openai_client.embeddings.create(
