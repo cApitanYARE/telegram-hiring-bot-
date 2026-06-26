@@ -1,6 +1,6 @@
 import os
 from langchain_openai import ChatOpenAI
-from bot.ai.candidate_schemas import CandidateState, CandidateProfile, ScreeningResponse, CandidateVerdict
+from bot.ai.candidate_schemas import CandidateState, CandidateProfile, ScreeningResponse, CandidateVerdict, CandidateSearchQueryParsed
 from langchain_core.messages import SystemMessage
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
@@ -9,6 +9,35 @@ llm = ChatOpenAI(
     temperature=0.3,
     api_key=os.getenv("OPENAI_API_KEY")
 )
+
+async def analyze_query_vacancies(query: str):
+
+    analyze_query_llm = llm.with_structured_output(CandidateSearchQueryParsed)
+
+    system_prompt = f"""
+    You are an intelligent assistant for a recruitment platform. Your task is to analyze an incoming job search query from a user and break it down into two main components:
+    1. A semantic search string search_phrase, which will later be used to generate a vector embedding.
+    2. Structured filters (filters) for precise querying in an SQL database.
+
+    DATA EXTRACTION RULES:
+    1. `search_phrase`: Remove all conversational filler (e.g., "hello", "I'm looking for a job", "preferably"). Keep only the job title and core technologies. Append 2-3 popular synonyms separated by spaces (for example, if the query mentions "frontend", add "frontend react UI engineer"). Do not include location or salary expectations here.
+    2. `work_mode`: Look for key phrases. "From home", "remote", "remotely" -> 'Remote'. "In office", "locally", "on-site" -> 'Office'. If not mentioned, set to null.
+    3. `work_location`: Extract the city or country if specified. If not mentioned, set to null.
+    4. `salary_expectations`: If the user says "from $2000", record 2000. If they say "around $3000", record 2500 (leave a small downward margin so as not to miss relevant opportunities).
+    5. `experience_years`: If the candidate writes "I'm a junior with 1 year of experience", record 1.
+    6. `skills`: Strictly extract programming languages, frameworks, and tools (e.g., 'PostgreSQL', 'Docker', 'Python'). Be conservative — do not hallucinate or invent technologies that are not explicitly present in the text.
+
+    CRITICAL REQUIREMENT: Return the response strictly in JSON format according to the provided JSON schema. Do not add any introductory text, pleasantries, or explanations.
+    """
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": query}
+    ]
+    print()
+    result = await analyze_query_llm.ainvoke(messages)
+    print(result)
+    return result
 
 async def interviewer(state: CandidateState):
     structured_llm = llm.with_structured_output(ScreeningResponse)
