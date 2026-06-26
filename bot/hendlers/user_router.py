@@ -27,6 +27,7 @@ import re
 
 from bot.ai.candidate_schemas import CandidateProfile
 from bot.ai.candidate_graph import candidate_bot_app
+from bot.ai.candidate_agent import analyze_query_vacancies
 from langchain_core.messages import messages_from_dict, messages_to_dict, HumanMessage, BaseMessage
 user_router = Router()
 
@@ -248,13 +249,14 @@ async def get_vacancy_by_id_or_name(message: Message, state: FSMContext):
                 from openai import OpenAI
                 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+                result = await analyze_query_vacancies(input_data)
                 response = openai_client.embeddings.create(
                     model="text-embedding-3-small",
-                    input=input_data
+                    input=result.search_phrase
                 )
                 embedding_vector = response.data[0].embedding
                 
-                vacancies_list = await select_search_vacancie(embedding_vector=embedding_vector)
+                # vacancies_list = await select_search_vacancie(embedding_vector=embedding_vector)
                 
             except Exception as e:
                 print(f"OpenAI error during search: {e}")
