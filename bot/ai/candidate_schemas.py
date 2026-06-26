@@ -2,6 +2,31 @@ from pydantic import BaseModel, Field, field_validator
 from typing import List, Dict, Optional, Any, TypedDict, Literal
 from langgraph.graph import MessagesState
 
+class JobSearchFilters(BaseModel):
+    work_mode : Optional[str] = Field(
+        None, description="Type of workplace. Opportunity: 'office', 'remote', 'hybrid'."
+    )
+    work_location: Optional[str] = Field(
+        None, description="Location of work. City, Country"
+    )
+    experience_years: Optional[int] = Field(
+        None, description="Experience candidate in years"
+    )
+    salary_expectations: Optional[int] = Field(
+        None, description="Expectation about salary in USD."
+    )
+    skills: List[str] = Field(
+        default_factory=List, description="List of skills that mention candidate in query (example: ['Python', 'FastAPI','PostgreSQL'])"
+    )
+
+class CandidateSearchQueryParsed(BaseModel):
+    search_phrase: str = Field(
+        ..., description="Cleaned and enriched semantic search string for vector embedding. Contains only roles and key tech."
+    )
+    filters: JobSearchFilters = Field(
+        ..., description="Structured filters for precise SQL query."
+    )
+
 class CandidateProfile(BaseModel):
     #id_user: Optional[int] = Field(None, description="ID candidate")
     location: Optional[str] = Field(None, description="candidate location")
@@ -35,7 +60,6 @@ class ScreeningResponse(BaseModel):
         None, 
         description="Which specific “nice-to-have” skill did you just check in this step?. If the question was about location or experience, leave it as “None.”"
     )
-
 
 class CandidateVerdict(BaseModel):
     match_percentage: int = Field(
