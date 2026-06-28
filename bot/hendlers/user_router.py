@@ -250,13 +250,20 @@ async def get_vacancy_by_id_or_name(message: Message, state: FSMContext):
                 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
                 result = await analyze_query_vacancies(input_data)
+
+                vacancy_text = (
+                    f"Position and Skills {result.search_phrase }."
+                )
+                if result.filters and result.filters.experience_years:
+                    vacancy_text += f" Required Experience: {result.filters.experience_years}."
+
                 response = openai_client.embeddings.create(
                     model="text-embedding-3-small",
-                    input=result.search_phrase
+                    input=vacancy_text
                 )
                 embedding_vector = response.data[0].embedding
-                
-                # vacancies_list = await select_search_vacancie(embedding_vector=embedding_vector)
+
+                vacancies_list = await select_search_vacancie(result.filters,embedding_vector=embedding_vector)
                 
             except Exception as e:
                 print(f"OpenAI error during search: {e}")

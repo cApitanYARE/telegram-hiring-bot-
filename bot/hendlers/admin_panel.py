@@ -155,23 +155,15 @@ async def uploud_vacancies(message: Message, bot: bot, state: FSMContext):
         from openai import OpenAI
         openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-        #formatted_date = current_date.strftime("%d.%m.%Y")
-        formatted_text = (
-            #f"created_at:   {formatted_date}\n"
-            f"company_name: {data["company_name"]}\n"
-            f"job_position: {data["job_position"]}\n"
-            f"location:     {data["location"]}\n"
-            f"work_mode:    {data["work_mode"]}\n"
-            f"salary:       {data["salary"]}\n"           
-            f"experience:   {data["experience"]}\n"
-            f"skills:       {data["skills"]}\n"
-            f"nice_to_have: {data["nice_to_have"]}\n"            
-            #f"more_about_it:{data["more_about_it"]}\n"
+        vacancy_text = (
+            f"Position and Skills {data["job_position"]}, {data["skills"]}, {data["nice_to_have"]}."
+            f" Required Experience: {data["experience"]}."
         )
+
         try: 
             response = openai_client.embeddings.create(
                 model="text-embedding-3-small",
-                input=formatted_text
+                input=vacancy_text
             )
             embedding_vector = response.data[0].embedding
         except Exception as e:
