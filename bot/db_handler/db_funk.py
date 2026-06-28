@@ -56,9 +56,9 @@ async def create_table_vacancies(table_name='vacancies'):
                 {'name': 'salary', 'type': Integer},
                 {'name': 'experience', 'type': String(255)},
                 {'name': 'skills', 'type': String(255)},
-                {'name': 'nice_to_have', 'type': String(255)},
+                {'name': 'nice_to_have', 'type': Text},
                 {'name': 'more_about_it', 'type': Text},
-                {'name': 'embedding', 'type': String(255)},
+                {'name': 'embedding', 'type': Text},
                 {'name': 'content_hash', 'type': String(64), 'unique': True}
             ]
         )
@@ -218,10 +218,10 @@ async def insert_vacancies(data: dict, table_name='vacancies'):
     query = text(f"""
         INSERT INTO {table_name} (
             is_active, created_at, company_name, job_position, location, 
-            work_mode, salary, experience, skills, nice_to_have, more_about_it, embedding
+            work_mode, salary, experience, skills, nice_to_have, more_about_it, embedding, content_hash
         )
         VALUES (TRUE, NOW(), :company_name, :job_position, :location, :work_mode, 
-                :salary, :experience, :skills, :nice_to_have, :more_about_it, CAST(:embedding AS vector)), :content_hash
+                :salary, :experience, :skills, :nice_to_have, :more_about_it, CAST(:embedding AS vector), :content_hash)
         ON CONFLICT (content_hash) DO NOTHING;
     """)
     content = ""
@@ -239,7 +239,7 @@ async def insert_vacancies(data: dict, table_name='vacancies'):
                 'job_position': data.get('job_position'),
                 'location': data.get('location'),
                 'work_mode': data.get('work_mode'),
-                'salary': data.get('salary'),
+                'salary': int(data.get("salary")) if data.get("salary") else None,
                 'experience': data.get('experience'),
                 'skills': skills_str,
                 'nice_to_have': nice_to_have_str,
