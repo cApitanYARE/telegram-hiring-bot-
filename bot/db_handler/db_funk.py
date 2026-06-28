@@ -6,12 +6,12 @@ from sqlalchemy.sql import func
 from bot.create_bot import db_manager
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
-DATABASE_URL = config('DATABASE_URL')
 
-# async def connect_to_db():
-#     clean_url = DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
-#     conn = await asyncpg.connect(clean_url)
-#     return conn
+from bot.ai.candidate_schemas import JobSearchFilters
+
+import hashlib
+
+DATABASE_URL = config('DATABASE_URL')
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +53,13 @@ async def create_table_vacancies(table_name='vacancies'):
                 {'name': 'job_position', 'type': String(255)},
                 {'name': 'location', 'type': String(255)},
                 {'name': 'work_mode', 'type': String(255)},
-                {'name': 'salary', 'type': String(255)},
+                {'name': 'salary', 'type': Integer},
                 {'name': 'experience', 'type': String(255)},
                 {'name': 'skills', 'type': String(255)},
                 {'name': 'nice_to_have', 'type': String(255)},
-                {'name': 'more_about_it', 'type': Text}
+                {'name': 'more_about_it', 'type': Text},
+                {'name': 'embedding', 'type': String(255)},
+                {'name': 'content_hash', 'type': String(64), 'unique': True}
             ]
         )
 
@@ -219,8 +221,16 @@ async def insert_vacancies(data: dict, table_name='vacancies'):
             work_mode, salary, experience, skills, nice_to_have, more_about_it, embedding
         )
         VALUES (TRUE, NOW(), :company_name, :job_position, :location, :work_mode, 
-                :salary, :experience, :skills, :nice_to_have, :more_about_it, CAST(:embedding AS vector))
+                :salary, :experience, :skills, :nice_to_have, :more_about_it, CAST(:embedding AS vector)), :content_hash
+        ON CONFLICT (content_hash) DO NOTHING;
     """)
+    content = ""
+    for column in data:
+        value = data.get(column)
+        if value is not None:
+            cleaned_value = str(value).strip().lower()
+            content += cleaned_value
+    content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
 
     async with db_manager.session() as session:
         try:
@@ -234,7 +244,8 @@ async def insert_vacancies(data: dict, table_name='vacancies'):
                 'skills': skills_str,
                 'nice_to_have': nice_to_have_str,
                 'more_about_it': data.get('more_about_it'),
-                'embedding':  embedding_str
+                'embedding':  embedding_str,
+                'content_hash': content_hash
             })
             await session.commit()
             logger.debug("Vacancy successfully added to the database!")
@@ -257,9 +268,7 @@ async def select_all_vacancies(table_name='vacancies'):
     async with db_manager as client:
         return await client.select_data(table_name=table_name)
 
-async def select_search_vacancie(id_vacancy: int | str = None, embedding_vector: list = None, count=False, table_name="vacancies"):
-
-
+async def select_search_vacancie(id_vacancy: int | str = None, filters: JobSearchFilters = None, embedding_vector: list= None, count=False, table_name="vacancies"):
     if count:
         query = text(f"SELECT COUNT(id) FROM {table_name}")
         params = {}
@@ -270,54 +279,24 @@ async def select_search_vacancie(id_vacancy: int | str = None, embedding_vector:
 
         elif embedding_vector is not None:
             embedding_str = str(embedding_vector) if isinstance(embedding_vector, list) else embedding_vector
-
-            meta_filters = ["is_active = TRUE"]
             params = {
-                "embedding": embedding_str,
-                "query_text": query_text,
-                "limit_val": 2  
+                "embedding_vector": embedding_str,
+                "work_mode": filters.work_mode if filters else None,
+                "work_location": filters.work_location if filters else None,
+                "salary_expectations": filters.salary_expectations if filters else None,
+                "threshold": 0.50
             }
-            if min_salary is not None:
-                meta_filters.append("salary >= :min_salary")
-                params["min_salary"] = min_salary
-            
-            if location is not None:
-                meta_filters.append("location = :location")
-                params["location"] = location
-
-            where_clause = " AND ".join(meta_filters)
-
             query = text(f"""
-                WITH filtered_vacancies AS (
-                    SELECT id, job_position, company, salary, location, embedding, text_search_vector, raw_text
-                    FROM {table_name}
-                    WHERE {where_clause}
-                ),
-                user_query AS (
-                    SELECT 
-                        CAST(:embedding AS vector) AS query_embedding, 
-                        plainto_tsquery('english', :query_text) AS query_ts
-                ),
-                vector_results AS (
-                    SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> (SELECT query_embedding FROM user_query)) AS rank
-                    FROM filtered_vacancies
-                    LIMIT 20
-                ),
-                fts_results AS (
-                    SELECT id, ROW_NUMBER() OVER (ORDER BY ts_rank(text_search_vector, (SELECT query_ts FROM user_query)) DESC) AS rank
-                    FROM filtered_vacancies
-                    WHERE text_search_vector @@ (SELECT query_ts FROM user_query)
-                    LIMIT 20
-                )
-                SELECT 
-                    fv.*,
-                    COALESCE(1.0 / (60 + vr.rank), 0.0) + COALESCE(1.0 / (60 + fr.rank), 0.0) AS rrf_score
-                FROM filtered_vacancies fv
-                LEFT JOIN vector_results vr ON fv.id = vr.id
-                LEFT JOIN fts_results fr ON fv.id = fr.id
-                WHERE vr.id IS NOT NULL OR fr.id IS NOT NULL
-                ORDER BY rrf_score DESC
-                LIMIT :limit_val
+                SELECT id, company_name, job_position, location, work_mode, salary, experience, skills, nice_to_have, more_about_it,
+                    (1 - (embedding <=> CAST(:embedding_vector AS vector(1536)))) AS similarity
+                FROM {table_name}
+                WHERE is_active = TRUE
+                    AND (1 - (embedding <=> CAST(:embedding_vector AS vector(1536)))) >= :threshold
+                    AND (CAST(:work_mode AS text) IS NULL OR LOWER(work_mode) = LOWER(:work_mode))
+                    AND (CAST(:work_location AS text) IS NULL OR LOWER(location) = LOWER(:work_location))
+                    AND (CAST(:salary_expectations AS int) IS NULL OR salary >= :salary_expectations)
+                ORDER BY similarity DESC
+                LIMIT 5
             """)
         else:
             query = text(f"SELECT * FROM {table_name} WHERE job_position ILIKE :search_value")
@@ -328,7 +307,7 @@ async def select_search_vacancie(id_vacancy: int | str = None, embedding_vector:
         if count:
             return result.scalar()
             
-        return [dict(row) for row in result.mappings()]
+        return [dict(zip(result.keys(), row)) for row in result.fetchall()]
 
 async def select_data_for_hr_about_review(id_vacancie, id_user, table_name="for_hr_about_review"):
     query = text(f"""
