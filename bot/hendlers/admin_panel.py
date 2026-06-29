@@ -240,11 +240,6 @@ async def get_received_applications(message: Message):
 
         #print(type(rate_candidate))
 
-        ####
-        info = await analyze_github_profile(review.get('git_hub_url'))
-        print(info)
-        ####
-
         response_text = (
             # --- About Vacancy ---
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -394,61 +389,3 @@ async def insert_hr_comment_to_candidate(message: Message, state: FSMContext):
 
     await message.answer("Your comment has been successfully saved and sent!")
 
-import httpx
-from mcp.server.fastmcp import FastMCP
-
-mcp = FastMCP("GitHub-Profiler")
-
-def extract_username(url: str):
-    match = re.search(r'(?:https?://)?(?:www\.)?github\.com/([^/\s]+)', url)
-    if match:
-        return match.group(1)
-    return None
-
-@mcp.tool()
-async def analyze_github_profile(url: str) -> str:
-    username = extract_username(url)
-    clean_username = username.split("?")[0].strip().replace("/", "")
-
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "HiringTelegramBot"}
-
-    async with httpx.AsyncClient() as client:
-        repos_url = f"https://api.github.com/users/{clean_username}/repos?sort=updated&per_page=5"
-        repos_res = await client.get(
-            repos_url, headers=headers, follow_redirects=True
-        )
-
-        if repos_res.status_code != 200:
-            return "Error 200"
-
-        repos_data = repos_res.json()
-
-        if not repos_data or not isinstance(repos_data, list):
-            return f"User {clean_username} does not have any public repositories for analysis"
-
-        result_output = f"📊 Technical Analysis of User Projects:: {clean_username}\n"
-        result_output += f"Source: {url}\n"
-
-        for repo in repos_data:
-            repo_name = repo["name"]
-            description = repo["description"] or "No description available"
-            topics = repo.get(
-                "topics", []
-            ) 
-
-            languages_url = repo["languages_url"]
-            lang_res = await client.get(languages_url, headers=headers)
-            languages_used = []
-
-            if lang_res.status_code == 200:
-                languages_used = list(lang_res.json().keys())
-
-            skills = set(languages_used)
-            if topics:
-                skills.update(topics)
-
-            result_output += f"📁 Project: {repo_name}\n"
-            result_output += f"📝 Description: {description}\n"
-            result_output += f"🛠️ Technologies/Skills Used: {', '.join(skills) if skills else 'Not specified'}\n"
-
-        return result_output
