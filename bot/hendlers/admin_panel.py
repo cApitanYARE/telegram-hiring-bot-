@@ -272,6 +272,7 @@ async def get_received_applications(message: Message):
             f"👍 <b>Pros:</b> {rate_candidate.pros}\n\n"
             f"👎 <b>Cons:</b> {rate_candidate.cons}\n\n"
             f"📋 <b>Summary:</b> {rate_candidate.summary}\n"
+            f"📋 <b>github_summary:</b>{rate_candidate.github_summary}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━"
         )
         await message.answer(

@@ -62,6 +62,9 @@ class ScreeningResponse(BaseModel):
     )
 
 class CandidateVerdict(BaseModel):
+    summary: str = Field(
+        ..., description="A brief written explanation of the verdict (2–3 sentences)"
+    )
     match_percentage: int = Field(
         ..., ge=0, le=100, description="Candidate's match percentage for the job opening: 0 to 100"
     )
@@ -80,6 +83,7 @@ class CandidateVerdict(BaseModel):
     cons: List[str] = Field(
         ..., description="Weaknesses or potential risks (e.g., lack of experience)"
     )
-    summary: str = Field(
-        ..., description="A brief written explanation of the verdict (2–3 sentences)"
+    github_summary: Optional[str] = Field(
+        None, 
+        description="A technical review of the candidate's real GitHub projects found in 'github_parsed_projects_analysis'. Summarize their coding activity or state 'No GitHub data provided'."
     )
