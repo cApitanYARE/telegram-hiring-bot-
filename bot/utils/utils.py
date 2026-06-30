@@ -8,16 +8,16 @@ from aiogram.types import Message
 
 import re
 
-def get_random_person():
-    fake = Faker('en_US')
+# def get_random_person():
+#     fake = Faker('en_US')
 
-    user = {
-        'name': fake.name(),
-        'address': fake.address(),
-        'phone_number': fake.phone_number(),
-        'job': fake.job()
-    }
-    return user
+#     user = {
+#         'name': fake.name(),
+#         'address': fake.address(),
+#         'phone_number': fake.phone_number(),
+#         'job': fake.job()
+#     }
+#     return user
 
 
 async def clear_text(text: str):
@@ -66,3 +66,8 @@ async def process_pdf(file_path: str, message: Message):
     full_text = await clear_text(full_text)
     return full_text
 
+async def clear_github_username(url: str):
+    match = re.search(r'(?:https?://)?(?:www\.)?github\.com/([a-zA-Z0-9-]+)', url)
+    if match:
+        return match.group(1)
+    return None
