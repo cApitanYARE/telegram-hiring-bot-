@@ -4,11 +4,33 @@ from bot.ai.candidate_schemas import CandidateState, CandidateProfile, Screening
 from langchain_core.messages import SystemMessage
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
+import sys
+import json
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+from bot.utils.utils import clear_github_username
+
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0.3,
     api_key=os.getenv("OPENAI_API_KEY")
 )
+
+def convert_mcp_to_openai(mcp_tools) -> list:
+    """Converts tools from the MCP format to the OpenAI Function Calling format."""
+    openai_tools = []
+    for tool in mcp_tools.tools:
+        openai_tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.inputSchema,
+                },
+            }
+        )
+    return openai_tools
 
 async def analyze_query_vacancies(query: str):
 
@@ -34,7 +56,7 @@ async def analyze_query_vacancies(query: str):
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": query}
     ]
-    print()
+
     result = await analyze_query_llm.ainvoke(messages)
     print(result)
     return result
@@ -130,6 +152,39 @@ async def interviewer(state: CandidateState):
 async def analyze_interviewer(vacancy_data: dict, candidate_profile: dict):
     analyzer_llm = llm.with_structured_output(CandidateVerdict)
 
+    ### Get the user's last 3 repositories from GitHub
+    github_value = candidate_profile.get("git_hub_url")
+
+    github__clear_value = await clear_github_username(github_value)
+    print(github__clear_value)
+    github_analysis_text = "No GitHub data available or analyzed."
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    server_path = os.path.join(current_dir, "mcp-server", "server.py")
+    if github__clear_value and github__clear_value != "None":
+        server_params = StdioServerParameters(
+            command=sys.executable,  
+            args=[server_path],      
+            env=None
+        )
+        try:
+            print(f"[MCP] Starting a server for analyzing a developer's GitHub: {github__clear_value}")
+            async with stdio_client(server_params) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as mcp_session:
+                    await mcp_session.initialize()
+                    
+                    mcp_result = await mcp_session.call_tool(
+                        "analyze_user_repos", 
+                        arguments={"username": github__clear_value}
+                    )
+                    github_analysis_text = mcp_result.content[0].text
+                    print("[MCP] GitHub has been successfully analyzed!")
+                    
+        except Exception as e:
+            github_analysis_text = f"Failed to analyze GitHub due to server error: {str(e)}"
+            print(f"[MCP Error] {github_analysis_text}")
+    ###
+
     system_prompt = f"""You are an expert IT Technical Recruiter and Talent Acquisition Specialist.
     Your task is to objectively evaluate a candidate's profile against the job vacancy requirements.
 
@@ -139,12 +194,18 @@ async def analyze_interviewer(vacancy_data: dict, candidate_profile: dict):
     CANDIDATE PROFILE:
     {candidate_profile}
 
+    GITHUB ANALYSIS DATA:
+    {github_analysis_text}
+
     EVALUATION GUIDELINES:
     1. match_percentage: Calculate logically. Full match of core skills and experience = 90-100%. Missing core skills should drop this significantly.
     2. verdict: Set "Hire" if match_percentage >= 70% and there are no critical blockers, otherwise "No Hire".
     3. matched_skills & missing_skills: Compare the 'skills' and 'nice_to_have' fields from the vacancy with the candidate's 'skills'.
-    4. pros & cons: Evaluate 'experience', 'work_mode' alignment, 'location', and 'git_hub_url' (if it's None/empty, note it as a minor risk if relevant, but not a critical blocker).
-    5. summary: Provide a 2–3 sentence synthesis of why this verdict and percentage were chosen.
+    4. pros & cons: Evaluate 'experience', 'work_mode' alignment, 'location', and 'git_hub_url'.
+    5. github_summary: Analyze the "GITHUB ANALYSIS DATA" provided above. 
+    - If the text contains the word "failed" or is empty/missing, set this field to "No GitHub data provided".
+    - Otherwise, provide a concise technical review of the candidate's real GitHub projects based on that data.
+    6. summary: Provide a 2–3 sentence synthesis of why this verdict and percentage were chosen.
 
     OUTPUT REQUIREMENTS:
     - You must strictly fulfill the schema constraints.
