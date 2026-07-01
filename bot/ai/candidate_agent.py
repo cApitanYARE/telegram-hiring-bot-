@@ -179,6 +179,7 @@ async def analyze_interviewer(vacancy_data: dict, candidate_profile: dict):
                     )
                     github_analysis_text = mcp_result.content[0].text
                     print("[MCP] GitHub has been successfully analyzed!")
+                    print(github_analysis_text)
                     
         except Exception as e:
             github_analysis_text = f"Failed to analyze GitHub due to server error: {str(e)}"
@@ -204,7 +205,9 @@ async def analyze_interviewer(vacancy_data: dict, candidate_profile: dict):
     4. pros & cons: Evaluate 'experience', 'work_mode' alignment, 'location', and 'git_hub_url'.
     5. github_summary: Analyze the "GITHUB ANALYSIS DATA" provided above. 
     - If the text contains the word "failed" or is empty/missing, set this field to "No GitHub data provided".
-    - Otherwise, provide a concise technical review of the candidate's real GitHub projects based on that data.
+- Otherwise, provide a concise technical review of the candidate's real GitHub projects based on that data. For each repository, include:
+  - Name of the repository
+  - A brief general description: Focus strictly on the project's architecture, core tech stack (e.g., frameworks, libraries), and the engineering problem it solves. Avoid generic phrases; ensure it highlights the technical value (e.g., specifying RAG architecture, NLP models, or data processing techniques) within 2-3 impact-driven sentences.
     6. summary: Provide a 2–3 sentence synthesis of why this verdict and percentage were chosen.
 
     OUTPUT REQUIREMENTS:
