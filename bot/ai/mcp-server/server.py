@@ -6,6 +6,7 @@ from mcp.server import NotificationOptions, Server
 import mcp.types as types
 from mcp.server.stdio import stdio_server
 
+
 server = Server("github-inspector")
 
 @server.list_tools()
@@ -29,7 +30,7 @@ async def handle_list_tools() -> list[types.Tool]:
 
 @server.call_tool()
 async def handle_call_tool(
-    name: str, arguments: dict[str, Any] | None
+name: str, arguments: dict[str, Any] | None
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
     """We're processing the tool call."""
     if name != "analyze_user_repos":
@@ -56,20 +57,19 @@ async def handle_call_tool(
                 return [types.TextContent(type="text", text=f"GitHub API returned an error: {response.status_code}")]
 
             repos = response.json()
-
+            
             if not repos:
                 return [types.TextContent(type="text", text=f"User '{username}' does not have public repositories.")]
 
             report_lines = [f"=== Last 3 repositories user @{username} ==="]
 
             for idx, repo in enumerate(repos, 1):
+                repo_name = repo.get('name')
+           
                 report_lines.append(
-                    f"\n{idx}. Name: {repo.get('name')}\n"
-                    f"   Link: {repo.get('html_url')}\n"
+                    f"\n{idx}. Name: {repo_name}\n"
                     f"   Description: {repo.get('description') or 'No description'}\n"
                     f"   Primary language: {repo.get('language') or 'Not specified'}\n"
-                    f"   Stars ⭐: {repo.get('stargazers_count')} | Forks 🍴: {repo.get('forks_count')}\n"
-                    f"   Last updated: {repo.get('updated_at')}"
                 )
 
             full_report = "\n".join(report_lines)
