@@ -229,10 +229,11 @@ async def get_received_applications(message: Message):
         username_str = f" (@{user_login})" if user_login else ""
 
         candidate_data = await select_data_for_hr_about_review(int(review.get('id_vacancie')), int(review.get('id_user')))
+        #print(candidate_data)
         vacancy_data = await select_search_vacancie(int(review.get('id_vacancie')))
 
         rate_candidate = await analyze_interviewer(vacancy_data, candidate_data)
-
+        #print(rate_candidate.github_summary)
         if review.get('status'):
             status_str = "🟢 In work"
         else:
@@ -271,8 +272,8 @@ async def get_received_applications(message: Message):
             f"❌ <b>Missing Skills:</b> {rate_candidate.missing_skills}\n\n"
             f"👍 <b>Pros:</b> {rate_candidate.pros}\n\n"
             f"👎 <b>Cons:</b> {rate_candidate.cons}\n\n"
+            f"📋 <b>Last 3 Git Hub Projext:</b>{rate_candidate.github_summary}\n"
             f"📋 <b>Summary:</b> {rate_candidate.summary}\n"
-            f"📋 <b>github_summary:</b>{rate_candidate.github_summary}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━"
         )
         await message.answer(
